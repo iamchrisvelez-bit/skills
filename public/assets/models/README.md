@@ -7,6 +7,7 @@ Three.js/Babylon or any glTF 2.0 pipeline for mobile.
 ![preview](preview.png)
 
 ```bash
+cd public/assets/models
 pip install -r requirements.txt
 python build_dragon_whelp.py                       # -> dragon_whelp.glb (+ dragon_whelp_albedo.png)
 python build_dragon_whelp.py -o hero.glb --texture-size 1024
