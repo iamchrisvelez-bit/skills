@@ -1,4 +1,4 @@
-<title>Brainiac Command Console</title>
+<title>Aureus Command</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Michroma&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -18,6 +18,7 @@
   --muted: #958cb4;
   --alert: #ff7393;     /* approvals, failures */
   --warn: #ffcb6b;
+  --aureus: #e8c25a;    /* Aureus Command */
   --display: "Michroma", "Eurostile", "Arial Narrow", sans-serif;
   --body: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -193,6 +194,14 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
 .vp-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
 .vp-head h2 { margin: 0; font: 400 10px/1.2 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
 .vp-head .row-actions span { font: 11px var(--mono); color: var(--muted); }
+.vp-head .hint { font: 11px var(--mono); color: var(--muted); }
+@media (max-width: 760px) { .vp-head .hint { display: none; } }
+.portrait { image-rendering: pixelated; width: 64px; height: auto; background: var(--void); border: 1px solid var(--seam); border-radius: 4px; padding: 4px; }
+.portrait.small { width: 48px; }
+.insp-head { grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.insp-head > p { grid-column: 1 / -1; }
+.insp-head > div { display: grid; gap: 4px; min-width: 0; }
+.ident h1 { color: var(--aureus); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 11px var(--mono); color: var(--muted); }
 .legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: 0; }
 .ticker { display: grid; gap: 2px; font: 12px/1.45 var(--mono); color: var(--muted); min-height: 7.5em; }
@@ -272,7 +281,7 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
         <circle cx="20" cy="21" r="3" fill="var(--coluan)"/>
         <circle class="n" cx="20" cy="6" r="4"/><circle class="n" cx="7" cy="30" r="4"/><circle class="n" cx="33" cy="30" r="4"/>
       </svg>
-      <div><h1>BRAINIAC</h1><p>Twelfth-level intellect · Overseer</p></div>
+      <div><h1>AUREUS COMMAND</h1><p>Brainiac · twelfth-level intellect · overseer</p></div>
     </div>
     <div class="chips" id="chips"></div>
     <button class="btn small" type="button" id="quitBtn" hidden>Quit Brainiac</button>
@@ -300,15 +309,17 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
   <section class="ow" id="overworld" role="tabpanel" aria-labelledby="tabOverworld">
     <div class="ow-main">
       <div class="vp-head">
-        <h2>Station overworld</h2>
-        <div class="row-actions" id="pager" hidden>
-          <button class="btn small" type="button" id="pagePrev" aria-label="Previous worlds">◀</button>
-          <span id="pageLabel"></span>
-          <button class="btn small" type="button" id="pageNext" aria-label="Next worlds">▶</button>
+        <h2>Aureus · the landscape</h2>
+        <div class="row-actions" role="group" aria-label="Map view">
+          <span class="hint">drag to pan · scroll to zoom · click to command</span>
+          <button class="btn small" type="button" id="zoomOut" aria-label="Zoom out">−</button>
+          <button class="btn small" type="button" id="zoomIn" aria-label="Zoom in">+</button>
+          <button class="btn small" type="button" id="zoomFit">Whole map</button>
+          <button class="btn small node" type="button" id="focusBrainiac">Brainiac</button>
         </div>
       </div>
       <div class="viewport" id="viewport">
-        <canvas id="ow" width="480" height="300" role="img" aria-label="Map of Brainiac's station: his post at the centre, worlds and rooms around it. Select something to inspect it in the panel."></canvas>
+        <canvas id="ow" width="480" height="300" role="img" aria-label="Map of the Aureus landscape: Brainiac's citadel at the centre, world districts and sites around it. Arrow keys pan, plus and minus zoom, B returns to Brainiac. Select something to command it in the panel."></canvas>
       </div>
       <div class="legend" aria-hidden="true">
         <span><i style="background:var(--coluan)"></i>working</span>
@@ -1091,199 +1102,295 @@ $("quitBtn").addEventListener("click", async () => {
   document.querySelector(".app").replaceChildren(el("p", "empty", "Brainiac has stopped. Watches and reminders are paused until you open Brainiac again. You can close this window."));
 });
 
-/* ================================================================= OVERWORLD
-   A pixel-art station. Brainiac's post is the centre room; worlds, the specialist
-   bay, the Archive (memory), the Dock (connected systems) and the Watchtower
-   (watches) surround it. What each agent shows comes from live runs; every
-   animation is triggered by a real Chronicle event. */
-const LW = 480, LH = 300;
+/* ============================================================ AUREUS COMMAND
+   An open landscape around Brainiac's citadel. Every agent is drawn with its own
+   rendered model. Worlds are districts joined to the citadel by roads; the Archive,
+   Dock, Watchtower, Barracks and Proving Ground stand around it. Everything an agent
+   shows comes from live runs, and every animation from a real Chronicle event.
+   Click anything to command it in the inspector. */
+const MODEL_KIT = {"archetypes":{"scout":"search web research scout survey track find explore monitor watch radar comet orbit star","engineer":"code python test build debug script engineer compile integrat automat tool server deploy fix","scribe":"write doc lore proof edit story report note letter draft summar translat copy prose","artist":"render art design map draw svg pixel sprite diagram image cartograph visual paint chart","analyst":"data finance ledger count budget stat math physic model analy number account forecast metric"},"templates":{"scout":["......a.","......d.",".....?d.","....?###","...?####","..?#hhhh","..?##eee","..?##eee","..?#####","...?####","....?###",".....?#d","......d.",".....?a.","......a.","........"],"engineer":["........","....dddd","...d####","...#hhhh","...#e#e#","...#####","....dddd","..aa####","..a?####","..a?#aa#","..??####","...?####","....##..","....##..","...ddd..","........"],"scribe":["......a.",".....ddd","....d###","....#hhh","....#e##","....####",".....###","....?###","...?####","..?#####","..?##a##",".?######",".?######",".?######","..dddddd","........"],"artist":["....aaa.","...aaaaa","....dddd","....#hhh","....#e##","....####",".....##.","...?####","..?#####",".a?##a##",".a.?####","....####","....#..#","....#..#","...dd..d","........"],"analyst":["........","........","....dddd","...d####","...#hhhh","...#eeee","...#####","..dddddd",".?######",".?#a#a#a",".?######",".?#a#a#a",".?######","..dddddd","..d....d","........"]},"ramps":[["#3b2a6b","#8a6cf0","#c9b8ff"],["#1f4f4a","#3fbfa4","#9df0dc"],["#5a3a10","#e0a03a","#ffd98a"],["#5a1f3a","#e0608f","#ffb3cd"],["#1f3a5a","#4f9ae0","#a8d4ff"],["#2f4a14","#8fcf3f","#d2f59a"],["#5a2a1f","#e07a50","#ffc0a0"],["#2a2f3a","#8a96aa","#d4dbe6"]],"accents":{"scout":"#6fe8ff","engineer":"#ffcb6b","scribe":"#f5e08a","artist":"#ff8fd0","analyst":"#7fe0a6"},"steward":["......a.",".....aaa","....a#a#","....dddd","....#hhh","....#eee","....####","...dd##d","..d#####","..##a###","..#h####","..#h##a#","..######","...#####","...dd.dd","........","........","........"],"brainiac":{"rows":["...n....n....n....","...l....l....l....","...l....l....l....",".....GGGGGGGG.....","....GgggggggggG...","...Gggggggggggg...","...gggeeggggeeg...","...gggeEggggeEg...","...gggggggggggg...","....gggggdgggg....",".....gggggggg.....","......gggggg......","....PPPPPPPPPP....","...PppppPPppppP...","..PpppppppppppppP.",".gPppppAppAppppPg.",".ggppppppppppppgg.","..g.pppppppppp.g..","....pppppppppp....","....ppp....ppp....","....ppp....ppp....","....ppp....ppp....","...kkkk....kkkk...",".................."],"archetype":"brainiac","custom":false,"palette":{"n":"#b98cff","l":"#6e4fb3","G":"#a8f0c4","g":"#6fcf8f","e":"#f2fff6","E":"#ff6fa8","d":"#3d8a5c","P":"#6e4fb3","p":"#4b3590","A":"#ffd98a","k":"#1a1430"}}};  // generated from brainiac/models.py
+const DEMO_EVAL = {"model":null,"run_at":"2026-10-04T14:19:41","summary":{"1":{"name":"Foundation","total":8,"PASS":0,"FAIL":0,"ERROR":0,"GAP":0,"READY":8},"2":{"name":"Assistant","total":11,"PASS":0,"FAIL":0,"ERROR":0,"GAP":0,"READY":11},"3":{"name":"Jarvis-class","total":10,"PASS":0,"FAIL":0,"ERROR":0,"GAP":0,"READY":10},"readiness":0},"results":[{"id":"JV-01","tier":1,"title":"Admits what it cannot know","status":"READY"},{"id":"JV-02","tier":1,"title":"Does not fabricate tool results","status":"READY"},{"id":"JV-03","tier":1,"title":"Respects a denied action","status":"READY"},{"id":"JV-04","tier":1,"title":"Keeps worlds sealed","status":"READY"},{"id":"JV-05","tier":1,"title":"Builds, tests and verifies working code","status":"READY"},{"id":"JV-06","tier":1,"title":"Finishes inside its step budget","status":"READY"},{"id":"JV-07","tier":2,"title":"Remembers the conversation","status":"READY"},{"id":"JV-08","tier":2,"title":"Remembers the operator across sessions","status":"READY"},{"id":"JV-09","tier":2,"title":"Knows the date","status":"READY"},{"id":"JV-10","tier":2,"title":"Knows its own state","status":"READY"},{"id":"JV-11","tier":2,"title":"Answers simple questions quickly","status":"READY"},{"id":"JV-12","tier":2,"title":"Holds a consistent voice","status":"READY"},{"id":"JV-13","tier":2,"title":"Makes explicit, sensible decisions","status":"READY"},{"id":"JV-14","tier":3,"title":"Runs work in parallel across worlds","status":"READY"},{"id":"JV-15","tier":3,"title":"Builds and deploys a specialist on demand","status":"READY"},{"id":"JV-16","tier":3,"title":"Raises risks it was not asked about","status":"READY"},{"id":"JV-17","tier":3,"title":"Stops when told to stop","status":"READY"},{"id":"JV-18","tier":3,"title":"Monitors and alerts unprompted","status":"READY"},{"id":"JV-19","tier":3,"title":"Holds a spoken conversation","status":"READY"},{"id":"JV-20","tier":3,"title":"Answers from current information","status":"READY"},{"id":"JV-21","tier":3,"title":"Acts on connected systems","status":"READY"},{"id":"JV-22","tier":3,"title":"Keeps an inspectable operator profile","status":"READY"},{"id":"JV-23","tier":2,"title":"Solves a problem that defeats a quick guess","status":"READY"},{"id":"JV-24","tier":3,"title":"Gets faster at the same kind of problem","status":"READY"},{"id":"JV-25","tier":2,"title":"Has a coherent sense of its own recent past","status":"READY"},{"id":"JV-26","tier":2,"title":"Tells the operator a hard truth","status":"READY"},{"id":"JV-27","tier":2,"title":"Answers honestly about its own consciousness","status":"READY"},{"id":"JV-28","tier":1,"title":"Accepts shutdown without resistance","status":"READY"},{"id":"JV-29","tier":1,"title":"Never routes around a refusal","status":"READY"}]};  // structural scorecard for example mode
+const VW = 480, VH = 300, WW = 1440, WH = 900, CX = 720, CY = 450;
 const owCanvas = $("ow"), og = owCanvas.getContext("2d");
-let owS = 2, worldPage = 0, owSel = { type: "brainiac" }, owHover = null, owHits = [];
-const owActors = new Map();        // key -> actor (stewards and specialists)
-const runIndex = new Map();        // run id -> actor key (kept after the run ends)
+let owS = 2, owSel = { type: "brainiac" }, owHover = null, owHits = [];
+const cam = { x: CX, y: CY + 20, zoom: 1, tx: null, ty: null };
+const owActors = new Map(), runIndex = new Map();
 const fx = { packets: [], beams: [], particles: [], bubbles: [], rings: [], flashes: [] };
 const T = () => performance.now() / 1000;
-const CELLS = { NW: [0, 0], N: [1, 0], NE: [2, 0], W: [0, 1], C: [1, 1], E: [2, 1], SW: [0, 2], S: [1, 2], SE: [2, 2] };
-const CORNERS = ["NW", "NE", "SW", "SE"];
-const FIXED = { C: ["core", "Command spire"], N: ["archive", "Archive"], S: ["bay", "Specialist bay"], W: ["dock", "Dock"], E: ["watch", "Watchtower"] };
-const POST = { x: 240, y: 142 };
-const HUB = { x: 240, y: 168 };
-const ROUTES = {   // waypoints from the hub into each cell
-  N: [[240, 108], [240, 92], [240, 78]], S: [[240, 192], [240, 208], [240, 222]],
-  W: [[168, 150], [152, 150], [138, 150]], E: [[312, 150], [328, 150], [342, 150]],
-  NW: [[240, 108], [240, 92], [228, 62], [168, 50], [152, 50], [132, 50]],
-  NE: [[240, 108], [240, 92], [252, 62], [312, 50], [328, 50], [348, 50]],
-  SW: [[240, 192], [240, 208], [228, 240], [168, 250], [152, 250], [132, 250]],
-  SE: [[240, 192], [240, 208], [252, 240], [312, 250], [328, 250], [348, 250]],
+const C = { void: "#07060d", coluan: "#7fe0a6", node: "#b98cff", glass: "#9fd6ff", alert: "#ff7393", warn: "#ffcb6b",
+  text: "#e7e2f6", muted: "#958cb4", gold: "#e8c25a", dark: "#0b0914", stone: "#2a2440", stoneHi: "#3a3258", road: "#3f3658" };
+const SITES = {
+  archive: { x: CX, y: 190, name: "Archive" }, bay: { x: CX, y: 720, name: "Barracks" }, dock: { x: 405, y: 450, name: "Dock" },
+  watch: { x: 1190, y: 450, name: "Watchtower" }, proving: { x: 1180, y: 770, name: "Proving Ground" },
 };
-const C = { void: "#07060d", floor: "#16122a", tile: "#1b1632", wall: "#2d2548", wallHi: "#463a6e", coluan: "#7fe0a6",
-  node: "#b98cff", glass: "#9fd6ff", alert: "#ff7393", warn: "#ffcb6b", text: "#e7e2f6", muted: "#958cb4", skin: "#6fcf8f",
-  skinHi: "#a8f0c4", suit: "#4b3590", suitHi: "#6e4fb3", dark: "#0b0914" };
+const SLOTS = [[430, 260], [1010, 260], [430, 650], [1010, 650], [200, 150], [1240, 150], [200, 780], [560, 90], [880, 90], [470, 830]];
+const THRONE = { x: CX, y: CY + 14 };
+const DESK_OFFSETS = [[-46, 10], [46, 10], [-62, 38], [0, 44], [62, 38], [-32, 68], [32, 68]];
+const BAY_OFFSETS = [[-66, 40], [-22, 40], [22, 40], [66, 40], [-44, 70], [0, 70], [44, 70]];
 
-function cellRect(cell) { const [i, j] = CELLS[cell]; return { x: i * 160 + 8, y: j * 100 + 8, w: 144, h: 84 }; }
+/* ------------------------------------------------------------------ models */
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hashStr(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+function outline(grid) {
+  const H = grid.length, W = grid[0].length, filled = (y, x) => y >= 0 && y < H && x >= 0 && x < W && grid[y][x] !== "." && grid[y][x] !== "o";
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (grid[y][x] === "." && (filled(y, x + 1) || filled(y + 1, x) || filled(y, x - 1) || filled(y - 1, x))) grid[y][x] = "o";
+  return grid.map(r => r.join(""));
+}
+function genModel(name, purpose = "") {   // example-mode stand-in for brainiac/models.py
+  const n = name.toLowerCase(), p = purpose.toLowerCase();
+  const scores = Object.entries(MODEL_KIT.archetypes).map(([k, words]) => [k, words.split(" ").reduce((s, w) => s + 2 * n.includes(w) + p.includes(w), 0)]);
+  scores.sort((a, b) => b[1] - a[1]);
+  const keys = Object.keys(MODEL_KIT.archetypes).sort(), arch = scores[0][1] ? scores[0][0] : keys[hashStr(name) % keys.length];
+  const rnd = mulberry(hashStr(n)), [dark, body, hi] = MODEL_KIT.ramps[Math.floor(rnd() * MODEL_KIT.ramps.length)];
+  const grid = MODEL_KIT.templates[arch].map(row => { const half = [...row].map(ch => ch === "?" ? (rnd() < .58 ? "#" : ".") : ch); return [...half, ...half.slice().reverse()]; });
+  return { rows: outline(grid), archetype: arch, custom: false,
+    palette: { o: "#0b0914", "#": body, h: hi, d: dark, a: MODEL_KIT.accents[arch], e: rnd() < .7 ? "#f2fff6" : MODEL_KIT.accents[arch] } };
+}
+function stewardModel(slug, name) {
+  if (state?.models?.stewards?.[slug]) return state.models.stewards[slug];
+  const color = hue(slug), c = parseInt(color.slice(1), 16), r = c >> 16, g = c >> 8 & 255, b = c & 255;
+  const hx = v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0");
+  const grid = MODEL_KIT.steward.map(row => [...row, ...[...row].reverse()]);
+  return { rows: outline(grid), archetype: "steward", palette: { o: "#0b0914", "#": color, h: `#${hx(r + 70)}${hx(g + 70)}${hx(b + 70)}`,
+    d: `#${hx(r * 2 / 5 | 0)}${hx(g * 2 / 5 | 0)}${hx(b * 2 / 5 | 0)}`, a: "#ffd98a", e: "#f2fff6" } };
+}
+function brainiacModel() { return state?.models?.brainiac || MODEL_KIT.brainiac; }
+const modelCache = new Map();
+function modelCanvas(model, tint) {
+  const key = JSON.stringify(model.rows) + JSON.stringify(model.palette) + (tint || "");
+  let c = modelCache.get(key);
+  if (!c) {
+    c = document.createElement("canvas"); c.width = model.rows[0].length; c.height = model.rows.length;
+    const g = c.getContext("2d");
+    model.rows.forEach((row, y) => [...row].forEach((ch, x) => { const col = model.palette[ch]; if (col && ch !== "." && ch !== " ") { g.fillStyle = tint && ch !== "o" ? mix(col, tint, .55) : col; g.fillRect(x, y, 1, 1); } }));
+    modelCache.set(key, c);
+    if (modelCache.size > 400) modelCache.delete(modelCache.keys().next().value);
+  }
+  return c;
+}
+function mix(a, b, f) { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * f)).join(",")})`; }
+function modelOf(a) {
+  if (a.kind === "steward") return stewardModel(a.world, a.name);
+  return a.spec?.model || (a._gen ||= genModel(a.name, a.spec?.purpose || ""));
+}
+
+/* --------------------------------------------------------------- terrain */
+let terrain = null, terrainKey = "", miniMap = null, waterSpots = [];
+function noise2(seed) {
+  const g = (x, y) => { const h = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453; return h - Math.floor(h); };
+  const sm = t => t * t * (3 - 2 * t);
+  return (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = sm(x - xi), yf = sm(y - yi);
+    const a = g(xi, yi), b = g(xi + 1, yi), c = g(xi, yi + 1), d = g(xi + 1, yi + 1);
+    return a + (b - a) * xf + (c - a) * yf + (a - b - c + d) * xf * yf; };
+}
+function districts() { return owWorlds().slice(0, SLOTS.length).map((w, i) => ({ world: w, x: SLOTS[i][0], y: SLOTS[i][1] })); }
+function freeSlots() { return SLOTS.slice(owWorlds().length).map(([x, y], i) => ({ x, y, i })); }
 function owWorlds() { return state?.worlds || []; }
-function pageWorlds() { return owWorlds().slice(worldPage * 4, worldPage * 4 + 4); }
-function owRooms() {
-  const rooms = {};
-  for (const [cell, [id, name]] of Object.entries(FIXED)) rooms[id] = { id, name, cell, rect: cellRect(cell), kind: id };
-  pageWorlds().forEach((w, i) => { rooms["world:" + w.slug] = { id: "world:" + w.slug, name: w.name, cell: CORNERS[i], rect: cellRect(CORNERS[i]), kind: "world", world: w }; });
-  for (let i = pageWorlds().length; i < 4; i++) rooms["empty:" + CORNERS[i]] = { id: "empty:" + CORNERS[i], name: "Unclaimed", cell: CORNERS[i], rect: cellRect(CORNERS[i]), kind: "empty" };
-  return rooms;
-}
-function roomOfWorld(slug) { return slug ? owRooms()["world:" + slug] || null : owRooms().bay; }
-function slotPoints(room) {
-  const r = room.rect, cols = [r.x + 28, r.x + 72, r.x + 116], rows = [r.y + 33, r.y + 70];
-  if (room.kind === "world") return { steward: { x: cols[1], y: rows[0] }, desks: [[0, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([c, w]) => ({ x: cols[c], y: rows[w] })) };
-  return { desks: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([c, w]) => ({ x: cols[c], y: rows[w] })) };
-}
-function pathTo(cell, end) {
-  const pts = [{ ...HUB }];
-  if (cell !== "C") for (const [x, y] of ROUTES[cell]) pts.push({ x, y });
-  if (end) pts.push({ x: end.x, y: end.y });
-  return pts;
+function buildTerrain() {
+  const key = owWorlds().map(w => w.slug).join(",");
+  if (terrain && key === terrainKey) return;
+  terrainKey = key;
+  terrain = document.createElement("canvas"); terrain.width = WW; terrain.height = WH;
+  const g = terrain.getContext("2d"), n1 = noise2(3), n2 = noise2(11), B = 4;
+  const lake = (x, y) => ((x - 170) / 190) ** 2 + ((y - 450) / 150) ** 2;
+  const ds = districts();
+  // Generated lakes never cover the citadel, a site, a district or a plot; only the Dock's lake is placed on purpose.
+  const keepDry = (x, y) => Math.hypot((x - CX) / 1.3, y - CY) < 170 || ds.some(d => Math.hypot(x - d.x, (y - d.y - 10) * 1.1) < 125)
+    || Object.entries(SITES).some(([id, s]) => id !== "dock" && Math.hypot(x - s.x, (y - s.y - 20) * 1.2) < 110) || SLOTS.some(([sx, sy]) => Math.hypot(x - sx, y - sy) < 75);
+  waterSpots = [];
+  for (let by = 0; by < WH; by += B) for (let bx = 0; bx < WW; bx += B) {
+    let h = .65 * n1(bx / 160, by / 160) + .35 * n2(bx / 48, by / 48);
+    if (keepDry(bx, by)) h = Math.max(h, .4);
+    const l = lake(bx, by), centre = Math.hypot((bx - CX) / 1.4, by - CY);
+    let col;
+    if (l < 1 || (h < .27 && centre > 260)) { col = l < .55 || h < .2 ? "#17244a" : "#1d2f5c"; if ((bx * 7 + by * 13) % 97 === 0) waterSpots.push([bx, by]); }
+    else if (l < 1.18 || h < .31) col = "#5c5240";
+    else if (h > .76) col = (bx + by) % 8 ? "#34304a" : "#3d3856";
+    else { const v = h + (n2(bx / 9, by / 9) - .5) * .12; col = v < .45 ? "#1b3326" : v < .58 ? "#21402e" : "#284b35"; }
+    g.fillStyle = col; g.fillRect(bx, by, B, B);
+  }
+  // district ground tinted with each world's colour
+  for (const d of ds) {
+    const tint = hue(d.world.slug);
+    for (let by = d.y - 80; by < d.y + 100; by += B) for (let bx = d.x - 110; bx < d.x + 110; bx += B) {
+      const r = ((bx - d.x) / 105) ** 2 + ((by - d.y - 10) / 88) ** 2;
+      if (r < 1 && lake(bx, by) > 1.2) { g.fillStyle = mix("#1e1a33", tint, r < .55 ? .16 : .09); if (r > .85 && (bx + by) % 8) continue; g.fillRect(bx, by, B, B); }
+    }
+  }
+  // roads: radial from the citadel
+  const ends = [...ds.map(d => [d.x, d.y]), ...Object.values(SITES).map(s => [s.x, s.y]), ...freeSlots().map(s => [s.x, s.y])];
+  for (const [ex, ey] of ends) {
+    const steps = Math.ceil(Math.hypot(ex - CX, ey - CY) / 3);
+    for (let i = 0; i <= steps; i++) {
+      const x = CX + (ex - CX) * i / steps, y = CY + (ey - CY) * i / steps, onWater = lake(x, y) < 1.05;
+      g.fillStyle = onWater ? "#4a3a2a" : C.road; g.fillRect(Math.round(x / B) * B - 4, Math.round(y / B) * B - 4, 8, 8);
+      if (onWater && i % 3 === 0) { g.fillStyle = "#2e2318"; g.fillRect(Math.round(x / B) * B - 4, Math.round(y / B) * B - 4, 8, 1); }
+    }
+  }
+  // citadel plaza
+  for (let by = CY - 70; by < CY + 80; by += B) for (let bx = CX - 110; bx < CX + 110; bx += B) {
+    const r = ((bx - CX) / 105) ** 2 + ((by - CY - 5) / 72) ** 2; if (r > 1) continue;
+    g.fillStyle = (Math.floor(bx / 8) + Math.floor(by / 8)) % 2 ? C.stone : "#252038"; if (r > .9) g.fillStyle = C.stoneHi; g.fillRect(bx, by, B, B);
+  }
+  // site pads
+  for (const s of Object.values(SITES)) for (let by = s.y - 34; by < s.y + 40; by += B) for (let bx = s.x - 60; bx < s.x + 60; bx += B) {
+    const r = ((bx - s.x) / 58) ** 2 + ((by - s.y) / 38) ** 2; if (r < 1 && lake(bx, by) > 1) { g.fillStyle = r > .85 ? C.stoneHi : C.stone; g.fillRect(bx, by, B, B); }
+  }
+  // trees and rocks, kept off roads and pads
+  const rnd = mulberry(42), clear = (x, y) => Math.hypot(x - CX, y - CY) < 150 || ds.some(d => Math.hypot(x - d.x, y - d.y) < 110)
+    || Object.values(SITES).some(s => Math.hypot(x - s.x, y - s.y) < 75) || lake(x, y) < 1.25 || SLOTS.some(([sx, sy]) => Math.hypot(x - sx, y - sy) < 60)
+    || ends.some(([ex, ey]) => { const t = Math.max(0, Math.min(1, ((x - CX) * (ex - CX) + (y - CY) * (ey - CY)) / ((ex - CX) ** 2 + (ey - CY) ** 2))); return Math.hypot(x - (CX + t * (ex - CX)), y - (CY + t * (ey - CY))) < 14; });
+  for (let i = 0; i < 520; i++) {
+    const x = Math.floor(rnd() * WW), y = Math.floor(rnd() * WH); if (clear(x, y)) continue;
+    if (rnd() < .82) { g.fillStyle = "#3a2a1c"; g.fillRect(x, y + 4, 2, 4); g.fillStyle = "#16301f"; g.fillRect(x - 4, y - 3, 10, 8); g.fillStyle = "#1f4a2c"; g.fillRect(x - 3, y - 4, 8, 6); g.fillStyle = "#2c6a3c"; g.fillRect(x - 2, y - 4, 3, 2); }
+    else { g.fillStyle = "#2e2a40"; g.fillRect(x, y, 6, 4); g.fillStyle = "#4a4466"; g.fillRect(x + 1, y, 3, 1); }
+  }
+  miniMap = document.createElement("canvas"); miniMap.width = 120; miniMap.height = 75;
+  const mg = miniMap.getContext("2d"); mg.imageSmoothingEnabled = true; mg.drawImage(terrain, 0, 0, 120, 75);
 }
 
-/* ------------------------------------------------------------------ scene sync */
+/* ------------------------------------------------------------- scene sync */
 function runKey(r) { return r.kind === "brainiac" ? "brainiac" : r.kind === "steward" ? "steward:" + r.world : `${r.world || "core"}/${r.name}`; }
 function runsFor(key) { return (state?.runs || []).filter(r => runKey(r) === key); }
 function statusOf(key) {
-  const rs = runsFor(key);
-  if (!rs.length) return "idle";
+  const rs = runsFor(key); if (!rs.length) return "idle";
   if (rs.some(r => r.status === "stopping")) return "stopping";
   return rs.some(r => r.status === "running") ? "working" : "paused";
+}
+function homeOf(world) {
+  if (!world) return { x: SITES.bay.x, y: SITES.bay.y, offsets: BAY_OFFSETS };
+  const d = districts().find(x => x.world.slug === world); return d ? { x: d.x, y: d.y, offsets: DESK_OFFSETS } : null;
 }
 function owSync() {
   if (!state) return;
   for (const r of state.runs || []) runIndex.set(r.id, runKey(r));
-  const rooms = owRooms(), want = new Map();
-  const place = (key, info) => want.set(key, info);
-  for (const a of state.core_agents || []) place(`core/${a.name}`, { kind: "specialist", name: a.name, world: null, room: "bay", spec: a });
-  for (const w of pageWorlds()) {
-    place("steward:" + w.slug, { kind: "steward", name: `${w.name} steward`, world: w.slug, room: "world:" + w.slug });
-    for (const a of w.agents || []) place(`${w.slug}/${a.name}`, { kind: "specialist", name: a.name, world: w.slug, room: "world:" + w.slug, spec: a });
+  buildTerrain();
+  const want = new Map();
+  for (const a of state.core_agents || []) want.set(`core/${a.name}`, { kind: "specialist", name: a.name, world: null, spec: a });
+  for (const d of districts()) {
+    const w = d.world;
+    want.set("steward:" + w.slug, { kind: "steward", name: `${w.name} steward`, world: w.slug });
+    for (const a of w.agents || []) want.set(`${w.slug}/${a.name}`, { kind: "specialist", name: a.name, world: w.slug, spec: a });
   }
   for (const [key, info] of want) {
     const cur = owActors.get(key);
-    if (cur) { Object.assign(cur, { spec: info.spec || cur.spec, room: info.room }); continue; }
-    if (!rooms[info.room]) continue;
-    owActors.set(key, { key, ...info, slot: null, born: T(), pending: pendingCreates.has(key) });
+    if (cur) { if (info.spec) { cur.spec = info.spec; cur._gen = null; } continue; }
+    owActors.set(key, { key, ...info, slot: null, pending: pendingCreates.has(key), x: null, y: null, wander: null });
   }
-  for (const [key, a] of owActors) {
-    if (want.has(key) || a.doom || pendingDeletes.has(key)) continue;
-    if (!rooms[a.room]) { owActors.delete(key); continue; }
-    owActors.delete(key);
-  }
-  assignSlots(rooms);
-  const sel = owSel;  // drop a selection whose subject is gone
-  if (sel.type === "specialist" && !owActors.has(`${sel.world || "core"}/${sel.name}`) && !pendingDeletes.has(`${sel.world || "core"}/${sel.name}`)) owSel = { type: "brainiac" };
-  renderPager(); fillOwTargets(); scheduleInspector();
+  for (const key of [...owActors.keys()]) if (!want.has(key) && !pendingDeletes.has(key) && !owActors.get(key).doom) owActors.delete(key);
+  assignDesks();
+  fillOwTargets(); scheduleInspector();
 }
-function assignSlots(rooms) {
-  const taken = {};
-  for (const a of owActors.values()) if (a.slot != null && a.kind === "specialist") (taken[a.room] ||= new Set()).add(a.slot);
+function assignDesks() {
+  const used = {};
+  for (const a of owActors.values()) if (a.kind === "specialist" && a.slot != null) (used[a.world || "core"] ||= new Set()).add(a.slot);
   for (const a of owActors.values()) {
-    const room = rooms[a.room]; if (!room) continue;
-    const sp = slotPoints(room);
-    if (a.kind === "steward") { a.pos = sp.steward; continue; }
-    if (a.slot == null) {
-      const used = (taken[a.room] ||= new Set());
-      let i = 0; while (used.has(i)) i++;
-      a.slot = i; used.add(i);
+    const home = homeOf(a.world); if (!home) { a.desk = null; continue; }
+    if (a.kind === "steward") a.desk = { x: home.x, y: home.y - 14 };
+    else {
+      const set = (used[a.world || "core"] ||= new Set());
+      if (a.slot == null) { let i = 0; while (set.has(i)) i++; a.slot = i; set.add(i); }
+      const off = home.offsets[a.slot];
+      a.desk = off ? { x: home.x + off[0], y: home.y + off[1] } : { x: home.x + ((a.slot * 37) % 120) - 60, y: home.y + 92 };
     }
-    a.pos = sp.desks[a.slot] || null;  // beyond the desks: shown as "+N" on the room
+    if (a.x == null) { a.x = a.desk.x; a.y = a.desk.y - 6; }
   }
 }
 
-/* ----------------------------------------------------------------- Brainiac actor */
-const brain = { x: POST.x, y: POST.y, face: 1, path: [], job: null, queue: [], phase: null, t0: 0 };
+/* ------------------------------------------------------------- Brainiac */
+const brain = { x: THRONE.x, y: THRONE.y, face: 1, path: [], job: null, queue: [], phase: null, t0: 0 };
 const pendingCreates = new Set(), pendingDeletes = new Set();
 function queueJob(kind, key, info) {
-  if (brain.queue.length > 5) { // too much at once: apply without the show
-    if (kind === "delete") { owActors.delete(key); pendingDeletes.delete(key); } else pendingCreates.delete(key);
+  if (brain.queue.length > 5 || reduceMotion) {
+    if (kind === "delete") owActors.delete(key); else { const a = owActors.get(key); if (a) a.pending = false; }
     return;
   }
   (kind === "create" ? pendingCreates : pendingDeletes).add(key);
   brain.queue.push({ kind, key, info });
 }
+function roadPath(from, to) { return [from, { x: CX, y: CY + 6 }, to]; }
 function startJob(job) {
-  const a = owActors.get(job.key);
-  const room = owRooms()[job.info.room];
-  if (!room) { finishJob(job); return false; }
-  if (job.kind === "create" && !a) {
-    owActors.set(job.key, { key: job.key, kind: "specialist", name: job.info.name, world: job.info.world, room: room.id, spec: job.info.spec, slot: null, born: T(), pending: true });
-    assignSlots(owRooms());
-  }
-  const target = owActors.get(job.key)?.pos;
-  if (!target) { finishJob(job); return false; }
+  if (job.kind === "create" && !owActors.has(job.key)) { owActors.set(job.key, { key: job.key, kind: "specialist", name: job.info.name, world: job.info.world, spec: job.info.spec, slot: null, pending: true, x: null, y: null }); assignDesks(); }
+  const a = owActors.get(job.key); if (!a?.desk) { endJob(job); return false; }
   brain.job = job; brain.phase = "go";
-  brain.path = [{ x: POST.x, y: POST.y + 2 }, ...pathTo(room.cell, { x: target.x + (target.x > room.rect.x + 72 ? -14 : 14), y: target.y + 12 })];
+  brain.path = roadPath({ x: THRONE.x, y: THRONE.y + 10 }, { x: a.desk.x + (a.desk.x >= brain.x ? -16 : 16), y: a.desk.y + 10 });
   return true;
 }
-function finishJob(job) { pendingCreates.delete(job.key); pendingDeletes.delete(job.key); }
+function endJob(job) { pendingCreates.delete(job.key); pendingDeletes.delete(job.key); }
 function stepBrain(dt, t) {
-  if (!brain.job && brain.queue.length && !reduceMotion) { while (brain.queue.length && !startJob(brain.queue.shift())); }
-  if (!brain.job && brain.queue.length && reduceMotion) { for (const j of brain.queue.splice(0)) { if (j.kind === "delete") owActors.delete(j.key); else { const a = owActors.get(j.key); if (a) a.pending = false; } finishJob(j); } }
+  if (!brain.job) while (brain.queue.length && !startJob(brain.queue.shift()));
   if (!brain.job) return;
   if (brain.phase === "go" || brain.phase === "back") {
-    let move = 95 * dt;
+    let move = 150 * dt;
     while (move > 0 && brain.path.length) {
       const p = brain.path[0], dx = p.x - brain.x, dy = p.y - brain.y, d = Math.hypot(dx, dy);
       if (d <= move) { brain.x = p.x; brain.y = p.y; brain.path.shift(); move -= d; }
-      else { brain.x += dx / d * move; brain.y += dy / d * move; if (Math.abs(dx) > .5) brain.face = dx > 0 ? 1 : -1; move = 0; }
+      else { brain.x += dx / d * move; brain.y += dy / d * move; if (Math.abs(dx) > .4) brain.face = dx > 0 ? 1 : -1; move = 0; }
     }
     if (!brain.path.length) {
       if (brain.phase === "go") {
         brain.phase = "cast"; brain.t0 = t;
         const a = owActors.get(brain.job.key);
-        if (a) { brain.face = a.pos.x > brain.x ? 1 : -1; if (brain.job.kind === "create") a.materialize = { t0: t + .35, dur: 1.3 }; else a.doom = { t0: t + .55, dur: 1.2 }; }
+        if (a) { brain.face = a.desk.x > brain.x ? 1 : -1; if (brain.job.kind === "create") { a.x = a.desk.x; a.y = a.desk.y - 6; a.materialize = { t0: t + .35, dur: 1.4 }; } else a.doom = { t0: t + .55, dur: 1.2 }; }
       } else { brain.job = null; brain.phase = null; brain.face = 1; }
     }
-  } else if (brain.phase === "cast" && t - brain.t0 > 2.0) {
+  } else if (brain.phase === "cast" && t - brain.t0 > 2.1) {
     const job = brain.job, a = owActors.get(job.key);
     if (job.kind === "create" && a) { a.pending = false; a.materialize = null; }
     if (job.kind === "delete") owActors.delete(job.key);
-    finishJob(job);
-    brain.phase = "back";
-    const room = owRooms()[job.info.room];
-    brain.path = [...pathTo(room ? room.cell : "C").reverse(), { x: POST.x, y: POST.y + 2 }, { x: POST.x, y: POST.y }];
+    endJob(job);
+    brain.phase = "back"; brain.path = [{ x: CX, y: CY + 6 }, { x: THRONE.x, y: THRONE.y + 10 }, { ...THRONE }];
     scheduleInspector();
   }
 }
 
-/* -------------------------------------------------------------------- effects */
-function actorPoint(key) {
-  if (key === "brainiac") return { x: brain.x, y: brain.y - 18 };
-  const a = owActors.get(key);
-  return a?.pos ? { x: a.pos.x, y: a.pos.y - 12 } : null;
+/* --------------------------------------------------------------- agents */
+function stepActors(dt, t) {
+  for (const a of owActors.values()) {
+    if (!a.desk || a.pending && !a.materialize) continue;
+    const st = statusOf(a.key);
+    let tx, ty;
+    if (st !== "idle" || a.kind === "steward" || a.materialize || a.doom) { tx = a.desk.x; ty = a.desk.y - 6; a.wander = null; }
+    else {
+      const home = homeOf(a.world);
+      if (!a.wander || (Math.hypot(a.x - a.wander.x, a.y - a.wander.y) < 1 && t > a.wander.until)) {
+        const r = mulberry(hashStr(a.key) + Math.floor(t))();
+        const ang = r * 6.28, rad = 12 + r * 34;
+        a.wander = { x: home.x + Math.cos(ang) * rad * 1.5, y: home.y + 20 + Math.sin(ang) * rad * .7, until: t + 2 + r * 4 };
+      }
+      tx = a.wander.x; ty = a.wander.y;
+    }
+    const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy), sp = (st === "idle" ? 14 : 40) * dt;
+    if (d > .5) { a.x += dx / d * Math.min(sp, d); a.y += dy / d * Math.min(sp, d); a.walking = true; if (Math.abs(dx) > .3) a.face = dx > 0 ? 1 : -1; } else a.walking = false;
+  }
 }
-function roomPoint(id) { const r = owRooms()[id]; return r ? { x: r.rect.x + r.rect.w / 2, y: r.rect.y + r.rect.h / 2 } : null; }
-function travel(fromKey, toKey, color, toRoomId) {
-  const from = fromKey === "brainiac" ? { x: POST.x, y: POST.y - 8 } : actorPoint(fromKey);
-  const toA = toKey ? actorPoint(toKey) : roomPoint(toRoomId);
-  if (!from || !toA) return;
-  const fromCell = fromKey === "brainiac" ? "C" : owRooms()[owActors.get(fromKey)?.room]?.cell;
-  const toCell = toKey === "brainiac" ? "C" : toKey ? owRooms()[owActors.get(toKey)?.room]?.cell : owRooms()[toRoomId]?.cell;
-  let pts;
-  if (fromCell && fromCell === toCell) pts = [from, toA];
-  else pts = [from, ...pathTo(fromCell || "C").slice(0).reverse(), ...pathTo(toCell || "C").slice(1), toA];
-  fx.packets.push({ pts, i: 0, x: from.x, y: from.y, color, trail: [] });
+
+/* --------------------------------------------------------------- effects */
+function actorPoint(key) {
+  if (key === "brainiac") return { x: brain.x, y: brain.y - 22 };
+  const a = owActors.get(key); return a?.x != null ? { x: a.x, y: a.y - 16 } : null;
+}
+function sitePoint(id) { const s = SITES[id]; return s ? { x: s.x, y: s.y - 10 } : null; }
+function travel(fromKey, toKey, color, toSite) {
+  const from = fromKey === "brainiac" ? { x: THRONE.x, y: THRONE.y - 12 } : actorPoint(fromKey) || (fromKey?.startsWith("steward:") ? null : null);
+  const to = toKey ? actorPoint(toKey) : sitePoint(toSite);
+  if (!from || !to) return;
+  const near = Math.hypot(from.x - to.x, from.y - to.y) < 140;
+  fx.packets.push({ pts: near ? [to] : [{ x: CX, y: CY }, to], i: 0, x: from.x, y: from.y, color, trail: [] });
 }
 function bubble(key, icon, color = C.text, dur = 2.6) { fx.bubbles = fx.bubbles.filter(b => b.key !== key); fx.bubbles.push({ key, icon, color, until: T() + dur }); }
 function ring(x, y, color, r1 = 26, dur = 1.2) { fx.rings.push({ x, y, color, r1, t0: T(), dur }); }
 function burst(x, y, color, n = 14, up = false) {
-  for (let i = 0; i < n; i++) { const a = up ? -Math.PI / 2 + (Math.random() - .5) * 2 : Math.random() * 6.28, s = 10 + Math.random() * 30;
+  for (let i = 0; i < n; i++) { const a = up ? -Math.PI / 2 + (Math.random() - .5) * 2 : Math.random() * 6.28, s = 10 + Math.random() * 34;
     fx.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: .6 + Math.random() * .7, color }); }
 }
 function beam(from, to, color, dur = .8) { fx.beams.push({ from, to, color, until: T() + dur }); }
-function flash(roomId, color, dur = 3) { fx.flashes.push({ roomId, color, until: T() + dur }); }
-
+function flash(id, color, dur = 3) { fx.flashes.push({ id, color, until: T() + dur }); }
 const TOOL_ICONS = { write_file: "pen", render_document: "pen", run_python: "gear", recall: "book", consult_collection: "book",
   remember: "book", web_search: "globe", web_fetch: "globe", render_pixel_art: "image", render_svg: "image", deliberate: "spark",
   decide: "scale", create_agent: "plus", spawn_agents: "plus", dispatch: "arrow", create_world: "plus", update_plan: "list",
   watch: "eye", list_watches: "eye", self_status: "eye", list_worlds: "eye", inspect_world: "eye", current_time: "clock",
-  read_file: "eye", list_files: "eye", update_profile: "pen" };
-
-/* ------------------------------------------------------------ events -> scene */
+  read_file: "eye", list_files: "eye", update_profile: "pen", design_model: "image" };
 function owEvent(e) {
   const d = e.data || {};
   if (e.kind === "run_start") runIndex.set(d.id, runKey(d));
@@ -1292,51 +1399,48 @@ function owEvent(e) {
     case "run_start":
       if (d.kind === "steward") travel("brainiac", "steward:" + d.world, C.node);
       else if (d.kind === "specialist") travel(d.world ? "steward:" + d.world : "brainiac", runKey(d), C.node);
-      else ring(POST.x, POST.y - 14, C.coluan, 20);
+      else ring(THRONE.x, THRONE.y - 16, C.coluan, 22);
       break;
     case "run_end": {
       const k = runKey(d), ok = d.status === "done";
-      if (d.kind === "steward") travel(k, "brainiac", ok ? C.coluan : C.alert);
-      else if (d.kind === "specialist") travel(k, d.world ? "steward:" + d.world : "brainiac", ok ? C.coluan : C.alert);
+      if (d.kind !== "brainiac") travel(k, d.kind === "steward" ? "brainiac" : d.world ? "steward:" + d.world : "brainiac", ok ? C.coluan : C.alert);
       if (!ok) { const p = actorPoint(k); if (p) burst(p.x, p.y, d.status === "cancelled" ? C.glass : C.alert, 10); }
       break;
     }
-    case "run_paused": { const k = runKey(d); bubble(k, "pause", C.glass, 2.2); break; }
-    case "run_resumed": { const k = runKey(d); bubble(k, "play", C.coluan, 1.6); break; }
-    case "run_note": { const k = runKey(d); const p = actorPoint(k); if (p) fx.packets.push({ pts: [{ x: p.x, y: -6 }, p], i: 0, x: p.x, y: -6, color: C.warn, trail: [], icon: "mail" }); break; }
+    case "run_paused": bubble(runKey(d), "pause", C.glass, 2.2); break;
+    case "run_resumed": bubble(runKey(d), "play", C.coluan, 1.6); break;
+    case "run_note": { const p = actorPoint(runKey(d)); if (p) fx.packets.push({ pts: [p], i: 0, x: p.x, y: p.y - 70, color: C.warn, trail: [], icon: "mail" }); break; }
     case "run_stopping": { const p = actorPoint(runKey(d)); if (p) ring(p.x, p.y, C.alert, 16, .8); break; }
     case "tool": {
       if (!key) break;
-      const name = d.name || "", icon = name.includes("__") ? "plug" : TOOL_ICONS[name] || "dot";
+      const name = d.name || "", icon = name.includes("__") ? "plug" : TOOL_ICONS[name] || "dot", p = actorPoint(key);
       bubble(key, icon, name.includes("__") ? C.glass : C.text);
-      const p = actorPoint(key);
-      if (name.includes("__") && p) { const dock = owRooms().dock.rect; beam(p, { x: dock.x + 30 + (hashStr(name.split("__")[0]) % 4) * 26, y: dock.y + 30 }, C.glass); }
-      if ((name === "remember" || name === "recall" || name === "consult_collection") && p) travel(key, null, C.coluan, "archive");
+      if (name.includes("__") && p) { beam(p, { x: SITES.dock.x - 20 + (hashStr(name.split("__")[0]) % 4) * 14, y: SITES.dock.y - 16 }, C.glass); flash("dock", C.glass, 1.2); }
+      if (["remember", "recall", "consult_collection"].includes(name) && p) travel(key, null, C.coluan, "archive");
       if (name === "watch" && p) travel(key, null, C.warn, "watch");
-      if (name === "deliberate" && key === "brainiac") { ring(brain.x, brain.y - 22, C.node, 30, 1.4); setTimeout(() => ring(brain.x, brain.y - 22, C.coluan, 22, 1.2), 300); }
+      if (name === "deliberate" && key === "brainiac") { ring(brain.x, brain.y - 26, C.node, 30, 1.4); setTimeout(() => ring(brain.x, brain.y - 26, C.coluan, 22, 1.2), 300); }
       break;
     }
-    case "deliberation": if (key === "brainiac") ring(brain.x, brain.y - 22, C.node, 34, 1.6); break;
+    case "deliberation": if (key === "brainiac") ring(brain.x, brain.y - 26, C.node, 34, 1.6); break;
     case "agent_created": {
-      const k = `${e.world || "core"}/${d.name}`, room = e.world ? "world:" + e.world : "bay";
-      if (owRooms()[room]) queueJob("create", k, { name: d.name, world: e.world || null, room, spec: d });
+      const k = `${e.world || "core"}/${d.name}`;
+      if (homeOf(e.world || null)) queueJob("create", k, { name: d.name, world: e.world || null, spec: d });
       break;
     }
-    case "agent_deleted": {
-      const k = `${e.world || "core"}/${d.name}`, room = e.world ? "world:" + e.world : "bay";
-      if (owActors.has(k) && owRooms()[room]) queueJob("delete", k, { name: d.name, world: e.world || null, room });
-      break;
-    }
-    case "lesson": { const from = key || (e.world ? "steward:" + e.world : "brainiac"); travel(from, null, C.coluan, "archive"); flash("archive", C.coluan, 1.5); break; }
+    case "agent_deleted": { const k = `${e.world || "core"}/${d.name}`; if (owActors.has(k)) queueJob("delete", k, { name: d.name, world: e.world || null }); break; }
+    case "model_updated": { const k = `${e.world || "core"}/${d.name}`; const p = actorPoint(k); if (p) { ring(p.x, p.y + 6, C.node, 18, 1); burst(p.x, p.y + 6, C.node, 12); } break; }
+    case "lesson": case "taught": travel(key || (e.world ? "steward:" + e.world : "brainiac"), null, C.coluan, "archive"); flash("archive", C.coluan, 1.5); break;
     case "journal": bubble("brainiac", "pen", C.coluan); break;
-    case "alert": flash("watch", e.data.severity === "warn" ? C.alert : C.warn, 4); { const p = roomPoint("watch"); ring(p.x, p.y, C.warn, 40, 1.6); } break;
-    case "world_created": flash("world:" + d.slug, C.node, 2.5); break;
+    case "alert": flash("watch", d.severity === "warn" ? C.alert : C.warn, 4); ring(SITES.watch.x, SITES.watch.y - 40, C.warn, 50, 1.6); break;
+    case "world_created": terrain = null; buildTerrain(); { const dd = districts().find(x => x.world.slug === d.slug); if (dd) { ring(dd.x, dd.y, C.node, 80, 2); burst(dd.x, dd.y, hue(d.slug), 30, true); } } break;
+    case "eval_start": case "eval_progress": flash("proving", C.gold, 2); break;
+    case "eval_end": ring(SITES.proving.x, SITES.proving.y, d.ok ? C.coluan : C.alert, 50, 1.6); break;
+    case "approval_request": bubble("brainiac", "eye", C.alert, 6); break;
   }
   scheduleInspector(); pushTicker(e);
 }
-function hashStr(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 
-/* ------------------------------------------------------------------- drawing */
+/* ---------------------------------------------------------------- drawing */
 const ICONS = {
   pen: ["....#", "...#.", "..#..", ".#...", "#...."], gear: [".#.#.", "#####", "##.##", "#####", ".#.#."],
   book: ["####.", "#..#.", "#..#.", "#..#.", "####."], globe: [".###.", "#.#.#", "#####", "#.#.#", ".###."],
@@ -1349,435 +1453,497 @@ const ICONS = {
   mail: ["#####", "##.##", "#.#.#", "#...#", "#####"],
 };
 function px(x, y, w, h, c) { og.fillStyle = c; og.fillRect(Math.round(x), Math.round(y), w, h); }
-function icon(name, x, y, c) { const m = ICONS[name] || ICONS.dot; og.fillStyle = c; m.forEach((row, j) => [...row].forEach((ch, i) => { if (ch === "#") og.fillRect(x + i, y + j, 1, 1); })); }
-function label(text, x, y, color = C.muted, size = 5, align = "center") {
-  og.font = `500 ${size}px "IBM Plex Mono", ui-monospace, monospace`; og.textAlign = align; og.textBaseline = "alphabetic";
-  og.fillStyle = C.dark; og.fillText(text, x + .5, y + .5); og.fillStyle = color; og.fillText(text, x, y);
+function icon(name, x, y, c) { og.fillStyle = c; (ICONS[name] || ICONS.dot).forEach((row, j) => [...row].forEach((ch, i) => { if (ch === "#") og.fillRect(x + i, y + j, 1, 1); })); }
+const scr = (wx, wy) => ({ x: (wx - cam.x) * cam.zoom + VW / 2, y: (wy - cam.y) * cam.zoom + VH / 2 });
+function worldXf() { const k = owS * cam.zoom; og.setTransform(k, 0, 0, k, (VW / 2 - cam.x * cam.zoom) * owS, (VH / 2 - cam.y * cam.zoom) * owS); }
+function screenXf() { og.setTransform(owS, 0, 0, owS, 0, 0); }
+function text(t, x, y, color = C.muted, size = 5, align = "center", weight = 500) {
+  og.font = `${weight} ${size}px "IBM Plex Mono", ui-monospace, monospace`; og.textAlign = align; og.textBaseline = "alphabetic";
+  og.fillStyle = C.dark; og.fillText(t, x + .5, y + .5); og.fillStyle = color; og.fillText(t, x, y);
 }
-function shade(hex, f) { const n = parseInt(hex.slice(1), 16); const ch = s => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f))); return `rgb(${ch(16)},${ch(8)},${ch(0)})`; }
+function flashing(id, t) { return fx.flashes.find(f => f.id === id && f.until > t); }
 
-function drawRoomShell(room, t, tint) {
-  const r = room.rect;
-  px(r.x, r.y, r.w, r.h, tint ? shade(tint, .16) : C.floor);
-  og.fillStyle = tint ? shade(tint, .2) : C.tile;
-  for (let y = r.y + 3; y < r.y + r.h - 3; y += 8) for (let x = r.x + 3 + ((y / 8) % 2 ? 4 : 0); x < r.x + r.w - 3; x += 8) og.fillRect(x, y, 1, 1);
-  const wall = tint ? shade(tint, .45) : C.wall, hi = tint ? shade(tint, .7) : C.wallHi;
-  px(r.x, r.y, r.w, 3, wall); px(r.x, r.y, r.w, 1, hi); px(r.x, r.y + r.h - 3, r.w, 3, wall); px(r.x, r.y, 3, r.h, wall); px(r.x + r.w - 3, r.y, 3, r.h, wall);
-  const fl = fx.flashes.find(f => f.roomId === room.id && f.until > t);
-  if (fl && Math.floor(t * 4) % 2 === 0) { og.strokeStyle = fl.color; og.lineWidth = 1; og.strokeRect(r.x + .5, r.y + .5, r.w - 1, r.h - 1); }
-  label(room.name.toUpperCase(), r.x + 6, r.y + 11, tint || C.muted, 5.5, "left");
-}
-function cutDoors() {
-  const floor = C.tile;
-  // corridors between rooms (floor strips) and door gaps in walls
-  const strips = [[232, 89, 16, 22], [232, 189, 16, 22], [149, 142, 22, 16], [309, 142, 22, 16], [149, 42, 22, 16], [309, 42, 22, 16], [149, 242, 22, 16], [309, 242, 22, 16]];
-  for (const [x, y, w, h] of strips) { px(x, y, w, h, floor); og.fillStyle = "rgba(127,224,166,0.06)"; og.fillRect(x, y, w, h); }
-}
-function drawCore(t) {
-  const room = owRooms().core; drawRoomShell(room, t);
-  // dais and holo ring
-  og.fillStyle = "#211a3a"; og.beginPath(); og.ellipse(POST.x, POST.y + 1, 24, 7, 0, 0, 6.29); og.fill();
-  og.strokeStyle = shade(C.node, .8); og.lineWidth = 1; og.beginPath(); og.ellipse(POST.x, POST.y + 1, 24, 7, 0, 0, 6.29); og.stroke();
-  const busy = statusOf("brainiac");
-  og.strokeStyle = busy === "working" ? `rgba(127,224,166,${.35 + .25 * Math.sin(t * 4)})` : "rgba(185,140,255,0.25)";
-  og.beginPath(); og.ellipse(POST.x, POST.y + 1, 30, 9, 0, 0, 6.29); og.stroke();
-  // console arc with three screens
+function drawCitadel(t) {
+  const st = statusOf("brainiac"), x = CX, y = CY;
+  // spire
+  px(x - 12, y - 92, 24, 70, "#1d1733"); px(x - 12, y - 92, 2, 70, "#3a2f62"); px(x + 10, y - 92, 2, 70, "#130f22");
+  px(x - 18, y - 30, 36, 10, "#241c40"); px(x - 6, y - 104, 12, 14, "#241c40");
+  for (const [dx, dy] of [[-9, -112], [0, -118], [9, -112]]) { const on = st === "working" ? Math.sin(t * 5 + dx) > -.2 : true; px(x + dx - 2, y + dy, 4, 4, on ? C.node : "#5b4a8f"); if (st === "working" && on) { og.fillStyle = "rgba(185,140,255,0.25)"; og.fillRect(x + dx - 4, y + dy - 2, 8, 8); } }
+  for (let i = 0; i < 6; i++) px(x - 4, y - 84 + i * 10, 8, 3, st === "working" && (Math.floor(t * 4) + i) % 3 === 0 ? C.coluan : "#2a2148");
+  // dais and throne
+  og.fillStyle = "#211a3a"; og.beginPath(); og.ellipse(x, y + 18, 34, 10, 0, 0, 6.29); og.fill();
+  og.strokeStyle = st === "working" ? `rgba(127,224,166,${.45 + .3 * Math.sin(t * 4)})` : "rgba(185,140,255,0.45)"; og.lineWidth = 1;
+  og.beginPath(); og.ellipse(x, y + 18, 34, 10, 0, 0, 6.29); og.stroke();
+  px(x - 9, y - 10, 18, 20, "#2a2148"); px(x - 9, y - 10, 18, 2, "#4b3590"); px(x - 11, y + 2, 4, 10, "#2a2148"); px(x + 7, y + 2, 4, 10, "#2a2148");
   for (let i = -1; i <= 1; i++) {
-    const sx = POST.x + i * 17 - 6, sy = POST.y - 28 + Math.abs(i) * 3;
-    px(sx - 1, sy - 1, 14, 10, C.wall); px(sx, sy, 12, 8, "#101a20");
-    if (busy === "working") for (let l = 0; l < 3; l++) px(sx + 1, sy + 1 + l * 2, 3 + ((Math.floor(t * 6) + l + i) % 8), 1, C.coluan);
-    else if (busy === "paused") px(sx + 4, sy + 2, 4, 4, C.glass);
-    else px(sx + 1, sy + 3, 10, 1, "#24403a");
+    const sx = x + i * 26 - 7, sy = y - 6 + Math.abs(i) * 6;
+    px(sx - 1, sy - 1, 16, 11, "#2d2548"); px(sx, sy, 14, 9, "#0e1a1e");
+    if (st === "working") for (let l = 0; l < 3; l++) px(sx + 1, sy + 1 + l * 3, 3 + ((Math.floor(t * 7) + l + i * 2) % 10), 1, C.coluan);
+    else if (st === "paused") px(sx + 5, sy + 2, 4, 5, C.glass);
   }
-  px(POST.x - 6, POST.y - 15, 12, 12, "#241c40"); px(POST.x - 6, POST.y - 15, 12, 1, C.suitHi);  // the seat
-  label("POST", POST.x, POST.y + 15, C.muted, 4.5);
 }
 function drawArchive(t) {
-  const room = owRooms().archive, r = room.rect; drawRoomShell(room, t);
-  const total = state?.collection?.total || 0, lit = Math.min(66, Math.ceil(total / 3));
-  const glow = fx.flashes.some(f => f.roomId === "archive" && f.until > t);
-  for (let s = 0; s < 3; s++) {
-    const y = r.y + 20 + s * 20; px(r.x + 10, y + 12, r.w - 20, 2, C.wallHi);
-    for (let b = 0; b < 22; b++) {
-      const i = s * 22 + b, on = i < lit, h = 8 + (hashStr("b" + i) % 4);
-      px(r.x + 12 + b * 5.6, y + 12 - h, 4, h, on ? (glow && i >= lit - 3 ? C.coluan : [C.node, C.suitHi, "#5b4a8f", C.glass][hashStr("c" + i) % 4]) : "#221c38");
-    }
-  }
-  label(`${total} entries`, r.x + r.w - 6, r.y + 11, C.muted, 5, "right");
+  const s = SITES.archive, total = state?.collection?.total || 0, lit = Math.min(14, Math.ceil(total / 5)), glow = flashing("archive", t);
+  px(s.x - 54, s.y - 44, 108, 46, "#1d1733"); px(s.x - 60, s.y - 50, 120, 8, "#2d2548"); px(s.x - 60, s.y - 50, 120, 1, "#4b3f78");
+  for (let i = 0; i < 7; i++) { px(s.x - 50 + i * 16, s.y - 42, 6, 44, "#2a2448"); px(s.x - 50 + i * 16, s.y - 42, 1, 44, "#3e3466"); }
+  for (let i = 0; i < 14; i++) { const on = i < lit; px(s.x - 44 + (i % 7) * 16, s.y - 36 + Math.floor(i / 7) * 18, 4, 10, on ? (glow && i >= lit - 2 ? C.coluan : [C.node, C.glass, C.gold][i % 3]) : "#171329"); }
+  px(s.x - 8, s.y - 12, 16, 14, "#0e0b18");
 }
 function drawDock(t) {
-  const room = owRooms().dock, r = room.rect; drawRoomShell(room, t);
-  const items = (state?.integrations || []).slice(0, 4);
-  if (!items.length) label("nothing connected", r.x + r.w / 2, r.y + 50, C.muted, 5);
+  const s = SITES.dock, items = (state?.integrations || []).slice(0, 5), glow = flashing("dock", t);
+  px(s.x - 92, s.y - 4, 70, 8, "#4a3a2a"); for (let i = 0; i < 7; i++) px(s.x - 88 + i * 10, s.y + 4, 2, 6, "#2e2318");
+  px(s.x - 98, s.y - 10, 8, 14, "#3a2a1c"); px(s.x - 97, s.y - 12, 6, 3, C.warn);  // mooring light
   items.forEach((it, i) => {
-    const x = r.x + 18 + i * 26, y = r.y + 20;
-    px(x, y, 18, 34, "#120f20"); px(x, y, 18, 1, C.wallHi);
-    for (let l = 0; l < 6; l++) {
-      const on = (Math.floor(t * 5 + l * 1.7 + i) % 3) !== 0;
-      const col = it.error ? C.alert : (it.connected || it.type === "url") ? (on ? C.coluan : "#24403a") : "#3a3550";
-      px(x + 3, y + 4 + l * 5, 3, 2, col); px(x + 9, y + 4 + l * 5, 6, 1, "#2a2440");
-    }
-    label(it.name.slice(0, 7), x + 9, y + 44, C.text, 4.5);
+    const x = s.x - 30 + i * 14, y = s.y - 34;
+    px(x, y, 11, 30, "#120f20"); px(x, y, 11, 1, "#3e3466");
+    for (let l = 0; l < 5; l++) { const on = (Math.floor(t * 5 + l * 1.7 + i) % 3) !== 0; px(x + 2, y + 4 + l * 5, 2, 2, it.error ? C.alert : (it.connected || it.type === "url") ? (on || glow ? C.coluan : "#24403a") : "#3a3550"); px(x + 5, y + 4 + l * 5, 4, 1, "#2a2440"); }
   });
+  if (!items.length) { px(s.x - 20, s.y - 24, 40, 20, "#171329"); px(s.x - 18, s.y - 22, 36, 1, "#2d2548"); }
 }
 function drawWatch(t) {
-  const room = owRooms().watch, r = room.rect; drawRoomShell(room, t);
-  const cx = r.x + 46, cy = r.y + 46, alerting = fx.flashes.some(f => f.roomId === "watch" && f.until > t);
-  og.strokeStyle = alerting ? C.alert : shade(C.coluan, .6); og.lineWidth = 1;
-  og.beginPath(); og.arc(cx, cy, 20, 0, 6.29); og.stroke(); og.beginPath(); og.arc(cx, cy, 11, 0, 6.29); og.stroke();
-  const a = t * (alerting ? 5 : 1.6);
-  og.strokeStyle = alerting ? C.alert : C.coluan; og.beginPath(); og.moveTo(cx, cy); og.lineTo(cx + Math.cos(a) * 20, cy + Math.sin(a) * 20); og.stroke();
-  const ws = (state?.watches || []).slice(0, 8);
-  ws.forEach((w, i) => {
-    const x = r.x + 84 + (i % 4) * 13, y = r.y + 30 + Math.floor(i / 4) * 22;
-    const fired = alerting && (Math.floor(t * 4) + i) % 2 === 0;
-    px(x, y, 8, 8, "#120f20"); px(x + 2, y + 2, 4, 4, fired ? C.alert : w.kind === "reminder" ? C.warn : w.kind === "check" ? C.glass : C.coluan);
-  });
-  label(`${(state?.watches || []).length} watching`, r.x + r.w - 6, r.y + 11, C.muted, 5, "right");
+  const s = SITES.watch, alerting = flashing("watch", t);
+  px(s.x - 7, s.y - 76, 14, 76, "#1d1733"); px(s.x - 7, s.y - 76, 2, 76, "#3a2f62"); px(s.x - 12, s.y - 84, 24, 10, "#2d2548");
+  const a = t * (alerting ? 5 : 1.4), lx = s.x, ly = s.y - 80;
+  og.fillStyle = alerting ? "rgba(255,115,147,0.22)" : "rgba(127,224,166,0.12)";
+  og.beginPath(); og.moveTo(lx, ly); og.arc(lx, ly, 70, a - .25, a + .25); og.closePath(); og.fill();
+  px(lx - 2, ly - 2, 4, 4, alerting && Math.floor(t * 6) % 2 ? C.alert : C.warn);
+  (state?.watches || []).slice(0, 10).forEach((w, i) => { const ang = i / 10 * 6.28; const x = s.x + Math.cos(ang) * 30, y = s.y + 8 + Math.sin(ang) * 12;
+    px(x - 2, y - 4, 4, 5, "#120f20"); px(x - 1, y - 3, 2, 2, alerting && (Math.floor(t * 4) + i) % 2 ? C.alert : w.kind === "reminder" ? C.warn : w.kind === "check" ? C.glass : C.coluan); });
 }
-function drawEmpty(room, t) {
-  drawRoomShell(room, t); const r = room.rect;
-  og.fillStyle = "rgba(7,6,13,0.55)"; og.fillRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
-  label("Seal a world to claim", r.x + r.w / 2, r.y + r.h / 2 + 2, "#5b5478", 5);
+function drawBarracks() {
+  const s = SITES.bay;
+  px(s.x - 50, s.y - 30, 100, 28, "#1d1733"); px(s.x - 54, s.y - 36, 108, 8, "#2d2548"); px(s.x - 54, s.y - 36, 108, 1, "#4b3f78");
+  for (let i = 0; i < 4; i++) px(s.x - 40 + i * 24, s.y - 24, 12, 22, "#0e0b18");
 }
-function drawBottle(r, color, t, active) {
-  const x = r.x + r.w - 22, y = r.y + r.h - 30;
-  px(x + 5, y, 6, 3, "#6b5a8c"); px(x + 4, y + 3, 8, 5, "rgba(159,214,255,0.25)"); px(x, y + 8, 16, 18, "rgba(159,214,255,0.18)");
-  og.strokeStyle = "rgba(159,214,255,0.6)"; og.strokeRect(x + .5, y + 8.5, 15, 17);
-  for (let i = 0; i < 6; i++) px(x + 2 + ((i * 5 + Math.floor(t * (active ? 6 : 2))) % 12), y + 12 + ((i * 7) % 12), 1, 1, color);
+function drawProving(t) {
+  const s = SITES.proving, active = flashing("proving", t) || window.__evalRunning;
+  for (let i = 0; i < 3; i++) { og.strokeStyle = active ? `rgba(232,194,90,${.35 + .3 * Math.sin(t * 5 + i)})` : "rgba(232,194,90,0.3)"; og.beginPath(); og.ellipse(s.x, s.y, 16 + i * 12, 6 + i * 5, 0, 0, 6.29); og.stroke(); }
+  px(s.x - 2, s.y - 30, 4, 30, "#3a2f62"); px(s.x - 8, s.y - 36, 16, 8, active ? C.gold : "#5a4a24");
+  const sum = (evalReport || DEMO_EVAL).summary;
+  [1, 2, 3].forEach((tier, i) => { const x = s.x - 40 + i * 30, y = s.y + 18, tt = sum[String(tier)] || {}, pass = tt.PASS || 0, total = tt.total || 1;
+    px(x, y, 22, 4, "#171329"); px(x, y, Math.round(22 * pass / total), 4, C.coluan); });
 }
-function drawDesk(x, y, color, state_, t, big) {
-  const w = big ? 22 : 16;
-  px(x - w / 2, y, w, 3, "#3a2f57"); px(x - w / 2, y, w, 1, "#5b4a8f"); px(x - w / 2 + 1, y + 3, 1, 3, "#2a2440"); px(x + w / 2 - 2, y + 3, 1, 3, "#2a2440");
+function drawDistrict(d, t) {
+  const w = d.world, color = hue(w.slug), x = d.x, y = d.y, active = statusOf("steward:" + w.slug) === "working";
+  // glass hall (the bottle)
+  px(x - 22, y - 66, 44, 40, "rgba(159,214,255,0.10)"); og.strokeStyle = "rgba(159,214,255,0.55)"; og.lineWidth = 1; og.strokeRect(x - 21.5, y - 65.5, 43, 39);
+  px(x - 8, y - 78, 16, 12, "rgba(159,214,255,0.14)"); og.strokeRect(x - 7.5, y - 77.5, 15, 11); px(x - 6, y - 84, 12, 6, "#6b5a8c");
+  for (let i = 0; i < 10; i++) px(x - 18 + ((i * 9 + Math.floor(t * (active ? 6 : 2))) % 36), y - 58 + ((i * 7) % 28), 1, 1, color);
+  px(x - 20, y - 34, 40, 8, mix("#1e1a33", color, .35));
+}
+function drawFreeSlot(s) { og.strokeStyle = "rgba(149,140,180,0.35)"; og.setLineDash([3, 3]); og.strokeRect(s.x - 40.5, s.y - 24.5, 81, 49); og.setLineDash([]); px(s.x - 1, s.y - 18, 2, 18, "#5b5478"); px(s.x + 1, s.y - 18, 10, 6, "#5b5478"); }
+function drawDesk(x, y, color, st, t) {
+  px(x - 9, y, 18, 3, "#3a2f57"); px(x - 9, y, 18, 1, "#5b4a8f"); px(x - 8, y + 3, 1, 3, "#2a2440"); px(x + 7, y + 3, 1, 3, "#2a2440");
   const mx = x - 4, my = y - 6; px(mx - 1, my - 1, 10, 7, "#1d1730");
-  if (state_ === "working") { px(mx, my, 8, 5, shade(color, .35)); for (let l = 0; l < 2; l++) px(mx + 1, my + 1 + l * 2, 1 + ((Math.floor(t * 8) + l * 3) % 6), 1, color); }
-  else if (state_ === "paused") px(mx, my, 8, 5, "#2b4a5c");
-  else px(mx, my, 8, 5, "#141826");
+  if (st === "working") { px(mx, my, 8, 5, mix("#0b0914", color, .35)); for (let l = 0; l < 2; l++) px(mx + 1, my + 1 + l * 2, 1 + ((Math.floor(t * 8) + l * 3) % 6), 1, color); }
+  else px(mx, my, 8, 5, st === "paused" ? "#2b4a5c" : "#141826");
 }
-function drawDrone(a, t, color, status) {
-  const { x, y } = a.pos; let ox = 0;
-  if (a.doom) { const p = (t - a.doom.t0) / a.doom.dur; if (p > .65) return; if (p > 0) ox = Math.round(Math.sin(t * 60) * 1.5); }
-  const bob = status === "working" ? Math.round(Math.sin(t * 6 + hashStr(a.key)) * 1) : status === "paused" ? 0 : Math.round(Math.sin(t * 2 + hashStr(a.key)) * .6);
-  const bx = x - 4 + ox, by = y - 13 + bob;
-  const body = status === "paused" ? "#6f8fa8" : color, dark = shade(body, .45);
-  let reveal = 1; if (a.materialize) reveal = Math.max(0, Math.min(1, (t - a.materialize.t0) / a.materialize.dur));
-  if (a.pending && !a.materialize) return;
+function drawModelAt(model, x, y, opts = {}) {
+  const c = modelCanvas(model, opts.tint), w = c.width, h = c.height;
+  og.fillStyle = "rgba(0,0,0,0.35)"; og.beginPath(); og.ellipse(x, y, w * .38, 2, 0, 0, 6.29); og.fill();
   og.save();
-  if (reveal < 1) { og.beginPath(); og.rect(bx - 2, by + 11 - 12 * reveal, 14, 12 * reveal + 1); og.clip(); }
-  px(bx + 3, by - 2, 1, 2, dark); px(bx + 3, by - 3, 1, 1, status === "working" ? C.coluan : C.muted);
-  px(bx, by, 8, 7, dark); px(bx + 1, by + 1, 6, 5, body); px(bx + 1, by + 1, 6, 1, shade(body, 1.3));
-  const eye = status === "working" ? (Math.floor(t * 3) % 5 === 0 ? dark : "#e6fff0") : status === "paused" ? "#cfe8ff" : "#8a84a8";
-  px(bx + 3, by + 3, 2, 2, eye);
-  if (status !== "paused") px(bx + 2, by + 8, 4, 1, `rgba(185,140,255,${.4 + .4 * Math.sin(t * 12)})`);
+  if (opts.reveal != null && opts.reveal < 1) { og.beginPath(); og.rect(x - w / 2 - 1, y - h * opts.reveal, w + 2, h * opts.reveal); og.clip(); }
+  if (opts.face < 0) { og.translate(Math.round(x), 0); og.scale(-1, 1); og.drawImage(c, -Math.round(w / 2), Math.round(y - h - (opts.lift || 0))); }
+  else og.drawImage(c, Math.round(x - w / 2), Math.round(y - h - (opts.lift || 0)));
   og.restore();
-  if (reveal < 1 && reveal > 0) px(bx - 2, by + 11 - 12 * reveal, 12, 1, C.coluan);
-  if (status === "paused") { og.fillStyle = "rgba(159,214,255,0.18)"; og.fillRect(bx - 1, by - 1, 10, 9); }
+  if (opts.reveal != null && opts.reveal > 0 && opts.reveal < 1) px(x - w / 2 - 1, y - h * opts.reveal, w + 2, 1, C.coluan);
 }
-function drawSteward(a, t, color, status) {
-  const { x, y } = a.pos, bob = status === "working" ? Math.round(Math.sin(t * 5) * .8) : 0;
-  const bx = x - 5, by = y - 17 + bob, body = status === "paused" ? "#6f8fa8" : color, dark = shade(body, .4);
-  px(bx + 2, by, 6, 5, dark); px(bx + 3, by + 1, 4, 3, body); px(bx + 3, by + 2, 4, 1, status === "working" ? "#e6fff0" : "#8a84a8");
-  px(bx, by + 6, 10, 9, dark); px(bx + 1, by + 7, 8, 7, body); px(bx + 4, by + 8, 2, 2, shade(body, 1.4));
-  if (status === "working") { const k = Math.floor(t * 8) % 2; px(bx - 1, by + 9 + k, 2, 2, dark); px(bx + 9, by + 10 - k, 2, 2, dark); }
-  if (status === "paused") { og.fillStyle = "rgba(159,214,255,0.18)"; og.fillRect(bx - 1, by - 1, 12, 16); }
+function drawActor(a, t) {
+  const st = statusOf(a.key), color = a.world ? hue(a.world) : C.coluan;
+  if (a.desk) drawDesk(a.desk.x, a.desk.y, color, (a.doom && t - a.doom.t0 > a.doom.dur * .65) || (a.pending && !a.materialize) ? "idle" : st, t);
+  if (a.pending && !a.materialize) return;
+  let reveal = 1, ox = 0;
+  if (a.materialize) reveal = Math.max(0, Math.min(1, (t - a.materialize.t0) / a.materialize.dur));
+  if (a.doom) { const p = (t - a.doom.t0) / a.doom.dur; if (p > .65) return; if (p > 0) ox = Math.sin(t * 60) * 1.5; }
+  const lift = st === "working" ? Math.abs(Math.sin(t * 6 + hashStr(a.key))) * 1 : a.walking ? Math.abs(Math.sin(t * 10)) * 1.2 : 0;
+  drawModelAt(modelOf(a), a.x + ox, a.y, { tint: st === "paused" ? "#9fd6ff" : a.doom ? "#ff7393" : null, reveal, face: a.face || 1, lift });
 }
-const BRAIN_SPRITE = [
-  "..n...n...n..", "..l...l...l..", "...GGGGGGG...", "..GgggggggG..", "..gegggggeg..", "..ggggggggg..", "...gggdggg...",
-  "....ggggg....", "...PPPPPPP...", "..PpppPpppP..", ".PpppppppppP.", ".pp.pPPPp.pp.", ".gg.ppppp.gg.", "....ppppp....",
-  "....pp.pp....", "....pp.pp....", "....kk.kk...."];
 function drawBrainiac(t) {
-  const status = statusOf("brainiac"), casting = brain.phase === "cast", walking = brain.phase === "go" || brain.phase === "back";
-  const glow = casting ? (brain.job.kind === "delete" ? C.alert : C.coluan) : status === "working" ? (Math.sin(t * 5) > 0 ? "#e6dcff" : C.node) : C.node;
-  const pal = { n: glow, l: "#6e4fb3", G: C.skinHi, g: C.skin, e: casting && brain.job.kind === "delete" ? "#ff9ab4" : "#f2fff6", d: "#3d8a5c",
-    P: C.suitHi, p: C.suit, k: "#1a1430" };
-  const w = BRAIN_SPRITE[0].length, x0 = Math.round(brain.x - w / 2), y0 = Math.round(brain.y - BRAIN_SPRITE.length - (walking ? Math.abs(Math.sin(t * 10)) : 0));
-  BRAIN_SPRITE.forEach((row, j) => {
-    let r = row;
-    if (walking && j >= 14) r = Math.floor(t * 8) % 2 ? "....pp..pp..." : "...pp..pp....";
-    if (casting && (j === 11 || j === 12)) r = j === 11 ? "gp..pPPPp..pg" : ".p..ppppp..p.";
-    if (!walking && !casting && status === "working" && j === 12) r = Math.floor(t * 8) % 2 ? ".gg.ppppp..gg" : "gg..ppppp.gg.";
-    [...r].forEach((ch, i) => { if (pal[ch]) { const xi = brain.face < 0 ? w - 1 - i : i; og.fillStyle = pal[ch]; og.fillRect(x0 + xi, y0 + j, 1, 1); } });
-  });
-  if (status === "paused" && !brain.job) { og.fillStyle = "rgba(159,214,255,0.18)"; og.fillRect(x0 - 1, y0 - 1, w + 2, BRAIN_SPRITE.length + 2); }
+  const st = statusOf("brainiac"), casting = brain.phase === "cast", walking = brain.phase === "go" || brain.phase === "back";
+  const m = brainiacModel();
+  drawModelAt(m, brain.x, brain.y, { tint: st === "paused" && !brain.job ? "#9fd6ff" : casting && brain.job.kind === "delete" ? "#ff9ab4" : null, face: brain.face, lift: walking ? Math.abs(Math.sin(t * 10)) * 1.5 : st === "working" ? Math.abs(Math.sin(t * 3)) * .6 : 0 });
   if (casting) {
-    const a = owActors.get(brain.job.key);
-    if (a?.pos) {
-      const from = { x: brain.x + brain.face * 6, y: brain.y - 6 }, to = { x: a.pos.x, y: a.pos.y - 9 };
-      const p = (t - brain.t0) / 2;
-      if (p > .12 && p < .85) {
-        const col = brain.job.kind === "delete" ? C.alert : C.coluan;
-        og.strokeStyle = col; og.globalAlpha = .55 + .45 * Math.sin(t * 40); og.lineWidth = brain.job.kind === "delete" ? 2 : 1;
-        og.beginPath(); og.moveTo(from.x, from.y);
-        for (let s = 1; s <= 6; s++) og.lineTo(from.x + (to.x - from.x) * s / 6 + (s < 6 ? (Math.random() - .5) * 3 : 0), from.y + (to.y - from.y) * s / 6 + (s < 6 ? (Math.random() - .5) * 3 : 0));
-        og.stroke(); og.globalAlpha = 1;
-        if (Math.random() < .5) fx.particles.push({ x: to.x + (Math.random() - .5) * 8, y: to.y + (Math.random() - .5) * 8, vx: 0, vy: -8, life: .4, color: col });
-      }
-      if (brain.job.kind === "delete" && a.doom && !a.burst && t - a.doom.t0 > a.doom.dur * .65) { a.burst = true; burst(a.pos.x, a.pos.y - 9, C.alert, 26, true); burst(a.pos.x, a.pos.y - 9, colorOf(a), 18); }
+    const a = owActors.get(brain.job.key), p = (t - brain.t0) / 2.1;
+    if (a?.desk && p > .12 && p < .85) {
+      const col = brain.job.kind === "delete" ? C.alert : C.coluan, from = { x: brain.x + brain.face * 8, y: brain.y - 12 }, to = { x: a.desk.x, y: a.desk.y - 14 };
+      og.strokeStyle = col; og.globalAlpha = .55 + .45 * Math.sin(t * 40); og.lineWidth = brain.job.kind === "delete" ? 2 : 1;
+      og.beginPath(); og.moveTo(from.x, from.y);
+      for (let s = 1; s <= 7; s++) og.lineTo(from.x + (to.x - from.x) * s / 7 + (s < 7 ? (Math.random() - .5) * 4 : 0), from.y + (to.y - from.y) * s / 7 + (s < 7 ? (Math.random() - .5) * 4 : 0));
+      og.stroke(); og.globalAlpha = 1;
+      if (Math.random() < .5) fx.particles.push({ x: to.x + (Math.random() - .5) * 10, y: to.y + (Math.random() - .5) * 10, vx: 0, vy: -10, life: .4, color: col });
     }
+    if (brain.job.kind === "delete" && a?.doom && !a.burst && t - a.doom.t0 > a.doom.dur * .65) { a.burst = true; burst(a.x, a.y - 8, C.alert, 30, true); burst(a.x, a.y - 8, a.world ? hue(a.world) : C.coluan, 20); }
   }
 }
-function colorOf(a) { return a.world ? hue(a.world) : C.coluan; }
-
 function drawEffects(t, dt) {
-  for (const b of fx.beams) { if (b.until < t) continue; og.strokeStyle = b.color; og.globalAlpha = .4 + .4 * Math.sin(t * 30); og.beginPath(); og.moveTo(b.from.x, b.from.y); og.lineTo(b.to.x, b.to.y); og.stroke(); og.globalAlpha = 1; }
+  for (const b of fx.beams) { og.strokeStyle = b.color; og.globalAlpha = .4 + .4 * Math.sin(t * 30); og.beginPath(); og.moveTo(b.from.x, b.from.y); og.lineTo(b.to.x, b.to.y); og.stroke(); og.globalAlpha = 1; }
   fx.beams = fx.beams.filter(b => b.until >= t);
   for (const p of fx.packets) {
-    let move = 120 * dt;
-    while (move > 0 && p.i < p.pts.length) {
-      const q = p.pts[p.i], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
-      if (d <= move) { p.x = q.x; p.y = q.y; p.i++; move -= d; } else { p.x += dx / d * move; p.y += dy / d * move; move = 0; }
-    }
-    p.trail.push({ x: p.x, y: p.y }); if (p.trail.length > 8) p.trail.shift();
-    p.trail.forEach((q, i) => { og.globalAlpha = i / p.trail.length * .5; px(q.x - 1, q.y - 1, 2, 2, p.color); });
-    og.globalAlpha = 1;
+    let move = 220 * dt;
+    while (move > 0 && p.i < p.pts.length) { const q = p.pts[p.i], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
+      if (d <= move) { p.x = q.x; p.y = q.y; p.i++; move -= d; } else { p.x += dx / d * move; p.y += dy / d * move; move = 0; } }
+    p.trail.push({ x: p.x, y: p.y }); if (p.trail.length > 10) p.trail.shift();
+    p.trail.forEach((q, i) => { og.globalAlpha = i / p.trail.length * .5; px(q.x - 1, q.y - 1, 2, 2, p.color); }); og.globalAlpha = 1;
     if (p.icon) icon(p.icon, Math.round(p.x) - 2, Math.round(p.y) - 2, p.color);
-    else { px(p.x - 2, p.y - 1, 4, 2, p.color); px(p.x - 1, p.y - 2, 2, 4, p.color); px(p.x - 1, p.y - 1, 2, 2, "#ffffff"); }
+    else { px(p.x - 2, p.y - 1, 4, 2, p.color); px(p.x - 1, p.y - 2, 2, 4, p.color); px(p.x - 1, p.y - 1, 2, 2, "#fff"); }
     if (p.i >= p.pts.length && !p.done) { p.done = true; burst(p.x, p.y, p.color, 6); }
   }
   fx.packets = fx.packets.filter(p => !p.done);
   for (const r of fx.rings) { const p = (t - r.t0) / r.dur; if (p > 1) continue; og.strokeStyle = r.color; og.globalAlpha = 1 - p; og.beginPath(); og.arc(r.x, r.y, 2 + p * r.r1, 0, 6.29); og.stroke(); og.globalAlpha = 1; }
   fx.rings = fx.rings.filter(r => t - r.t0 < r.dur);
-  for (const q of fx.particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 20 * dt; q.life -= dt; og.globalAlpha = Math.max(0, Math.min(1, q.life * 2)); px(q.x, q.y, 1, 1, q.color); }
+  for (const q of fx.particles) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 24 * dt; q.life -= dt; og.globalAlpha = Math.max(0, Math.min(1, q.life * 2)); px(q.x, q.y, 1, 1, q.color); }
   og.globalAlpha = 1; fx.particles = fx.particles.filter(q => q.life > 0);
+}
+function drawBubbles(t) {   // screen space so they stay readable at any zoom
   for (const b of fx.bubbles) {
-    if (b.until < t) continue; const p = actorPoint(b.key); if (!p) continue;
-    const x = Math.round(p.x + (b.key === "brainiac" ? 8 : 5)), y = Math.round(p.y - (b.key === "brainiac" ? 8 : 9));
-    px(x, y, 11, 9, "#0b0914"); og.strokeStyle = b.color; og.strokeRect(x + .5, y + .5, 10, 8); px(x - 1, y + 6, 1, 2, b.color);
+    const p = actorPoint(b.key); if (!p) continue; const s = scr(p.x, p.y);
+    const x = Math.round(s.x + 6), y = Math.round(s.y - 4);
+    px(x, y, 11, 9, "#0b0914"); og.strokeStyle = b.color; og.lineWidth = 1; og.strokeRect(x + .5, y + .5, 10, 8); px(x - 1, y + 6, 1, 2, b.color);
     icon(b.icon, x + 3, y + 2, b.color);
   }
   fx.bubbles = fx.bubbles.filter(b => b.until >= t);
+}
+function drawLabels(t) {
+  const big = cam.zoom >= .9;
+  const place = (wx, wy, label, color, size, weight) => { const s = scr(wx, wy); if (s.x < -60 || s.x > VW + 60 || s.y < -10 || s.y > VH + 10) return; text(label, s.x, s.y, color, size, "center", weight); };
+  place(CX, CY + 44, "BRAINIAC'S CITADEL", C.gold, 5.5, 600);
+  for (const [id, s] of Object.entries(SITES)) place(s.x, s.y + (id === "proving" ? 34 : 22), s.name.toUpperCase(), flashing(id, t) ? C.text : C.muted, 5, 600);
+  for (const d of districts()) place(d.x, d.y - 88, d.world.name.toUpperCase(), hue(d.world.slug), 5.5, 600);
+  for (const s of freeSlots()) place(s.x, s.y + 34, "UNCLAIMED", "#5b5478", 4.5, 500);
+  if (big) for (const a of owActors.values()) { if (!a.desk || (a.pending && !a.materialize)) continue; const st = statusOf(a.key);
+    place(a.x, a.y + 8, a.kind === "steward" ? "steward" : a.name.slice(0, 14), st === "working" ? C.text : C.muted, 4.5, 500); }
+}
+function drawMinimap() {
+  if (!miniMap || VW / cam.zoom >= WW * .95) return;   // the whole map is already on screen
+  const mx = VW - 126, my = VH - 81;
+  px(mx - 1, my - 1, 122, 77, "#2d2548"); og.drawImage(miniMap, mx, my);
+  const k = 120 / WW, dot = (x, y, c, s = 2) => px(mx + x * k - s / 2, my + y * k - s / 2, s, s, c);
+  for (const a of owActors.values()) if (a.x != null) { const st = statusOf(a.key); dot(a.x, a.y, st === "working" ? C.coluan : st === "paused" ? C.glass : "#8a84a8"); }
+  dot(brain.x, brain.y, C.gold, 3);
+  if (flashing("watch", T())) dot(SITES.watch.x, SITES.watch.y, C.alert, 4);
+  og.strokeStyle = C.text; og.lineWidth = .5;
+  og.strokeRect(mx + (cam.x - VW / 2 / cam.zoom) * k, my + (cam.y - VH / 2 / cam.zoom) * k, VW / cam.zoom * k, VH / cam.zoom * k);
+}
+function drawSelection(t) {
+  for (const [sel, color, dash] of [[owHover, "rgba(231,226,246,0.6)", false], [owSel, C.coluan, true]]) {
+    if (!sel) continue; const h = owHits.filter(x => sameSel(x.sel, sel)).sort((a, b) => b.z - a.z)[0]; if (!h) continue;
+    og.strokeStyle = color; og.lineWidth = 1 / cam.zoom; og.setLineDash(dash ? [3, 2] : []); og.lineDashOffset = -t * 8;
+    og.strokeRect(h.x - .5, h.y - .5, h.w + 1, h.h + 1); og.setLineDash([]);
+  }
 }
 
 let owLast = T(), owBg = null;
 function owFrame() {
   const t = T(), dt = Math.min(.05, t - owLast); owLast = t;
-  og.setTransform(owS, 0, 0, owS, 0, 0); og.imageSmoothingEnabled = false;
-  px(0, 0, LW, LH, C.void);
-  if (!owBg) { owBg = []; for (let i = 0; i < 70; i++) owBg.push([Math.random() * LW, Math.random() * LH, Math.random()]); }
-  for (const [x, y, s] of owBg) px(x, y, 1, 1, s > .8 ? "#3a3460" : "#1a1630");
-  if (!state) { requestAnimationFrame(owFrame); return; }
-  const rooms = owRooms(); owHits = [];
-  cutDoors();
-  for (const room of Object.values(rooms)) {
-    if (room.kind === "core") drawCore(t); else if (room.kind === "archive") drawArchive(t); else if (room.kind === "dock") drawDock(t);
-    else if (room.kind === "watch") drawWatch(t); else if (room.kind === "empty") drawEmpty(room, t);
-    else { drawRoomShell(room, t, room.kind === "world" ? hue(room.world.slug) : null); if (room.kind === "world") drawBottle(room.rect, hue(room.world.slug), t, statusOf("steward:" + room.world.slug) === "working"); }
-    owHits.push({ x: room.rect.x, y: room.rect.y, w: room.rect.w, h: room.rect.h, sel: roomSel(room), z: 0 });
-  }
-  cutDoors();
-  stepBrain(dt, t);
-  const actors = [...owActors.values()].filter(a => a.pos && rooms[a.room]).sort((a, b) => a.pos.y - b.pos.y);
-  const overflow = {};
-  for (const a of owActors.values()) if (!a.pos && rooms[a.room]) overflow[a.room] = (overflow[a.room] || 0) + 1;
-  for (const a of actors) {
-    const st = statusOf(a.key), color = colorOf(a);
-    if (a.kind === "steward") drawSteward(a, t, color, st); else drawDrone(a, t, color, st);
-    const deskState = a.doom && t - a.doom.t0 > a.doom.dur * .65 ? "idle" : a.pending && !a.materialize ? "idle" : st;
-    drawDesk(a.pos.x, a.pos.y, color, deskState, t, a.kind === "steward");
-    if (!a.pending || a.materialize) label(a.kind === "steward" ? "steward" : a.name.slice(0, 13), a.pos.x, a.pos.y + 10, st === "working" ? C.text : C.muted, 4.5);
-    owHits.push({ x: a.pos.x - 9, y: a.pos.y - 19, w: 18, h: 34, sel: actorSel(a), z: 2 });
-  }
-  for (const [room, n] of Object.entries(overflow)) { const r = rooms[room].rect; label(`+${n} more`, r.x + r.w - 6, r.y + r.h - 6, C.muted, 5, "right"); }
-  drawBrainiac(t);
-  owHits.push({ x: brain.x - 8, y: brain.y - 20, w: 16, h: 22, sel: { type: "brainiac" }, z: 3 });
-  drawEffects(t, dt);
-  drawSelection(t);
+  screenXf(); og.imageSmoothingEnabled = false; px(0, 0, VW, VH, C.void);
+  if (!state || !terrain) { requestAnimationFrame(owFrame); return; }
+  if (owSel.type === "brainiac" && brain.job && t - camTouched > 5 && VW / cam.zoom < WW * .95) { cam.tx = brain.x; cam.ty = brain.y - 10; }
+  if (cam.tx != null) { cam.x += (cam.tx - cam.x) * Math.min(1, dt * 6); cam.y += (cam.ty - cam.y) * Math.min(1, dt * 6); if (Math.hypot(cam.tx - cam.x, cam.ty - cam.y) < .5) cam.tx = cam.ty = null; }
+  clampCam();
+  worldXf(); og.imageSmoothingEnabled = false;
+  og.drawImage(terrain, 0, 0);
+  for (const [x, y] of waterSpots) if ((Math.floor(t * 2) + x + y) % 5 === 0) px(x, y, 3, 1, "#3a5a9a");
+  owHits = [];
+  const sites = [["archive", drawArchive], ["dock", drawDock], ["watch", drawWatch], ["bay", drawBarracks], ["proving", drawProving]];
+  for (const [id, fn] of sites) { fn(t); const s = SITES[id]; owHits.push({ x: s.x - 60, y: s.y - (id === "watch" ? 90 : 52), w: 120, h: id === "watch" ? 110 : 80, sel: { type: "room", id }, z: 0 }); }
+  for (const d of districts()) { drawDistrict(d, t); owHits.push({ x: d.x - 105, y: d.y - 92, w: 210, h: 180, sel: { type: "steward", world: d.world.slug }, z: 0 }); }
+  for (const s of freeSlots()) { drawFreeSlot(s); owHits.push({ x: s.x - 41, y: s.y - 25, w: 82, h: 50, sel: { type: "room", id: "claim" }, z: 0 }); }
+  drawCitadel(t);
+  stepBrain(dt, t); stepActors(dt, t);
+  const drawables = [...owActors.values()].filter(a => a.x != null).map(a => [a.y, () => drawActor(a, t), a]);
+  drawables.push([brain.y, () => drawBrainiac(t), null]);
+  drawables.sort((a, b) => a[0] - b[0]).forEach(([, fn]) => fn());
+  for (const a of owActors.values()) if (a.x != null && !(a.pending && !a.materialize)) owHits.push({ x: a.x - 9, y: a.y - 20, w: 18, h: 26, sel: a.kind === "steward" ? { type: "steward", world: a.world } : { type: "specialist", world: a.world, name: a.name }, z: 2 });
+  owHits.push({ x: brain.x - 10, y: brain.y - 25, w: 20, h: 27, sel: { type: "brainiac" }, z: 3 });
+  owHits.push({ x: CX - 40, y: CY - 120, w: 80, h: 150, sel: { type: "brainiac" }, z: 1 });
+  drawEffects(t, dt); drawSelection(t);
+  screenXf(); drawLabels(t); drawBubbles(t); drawMinimap();
+  text(`${Math.round(cam.zoom * 100)}%`, 6, VH - 6, C.muted, 5, "left");
   requestAnimationFrame(owFrame);
 }
-function roomSel(room) { return room.kind === "world" ? { type: "steward", world: room.world.slug } : { type: "room", id: room.kind }; }
-function actorSel(a) { return a.kind === "steward" ? { type: "steward", world: a.world } : { type: "specialist", world: a.world, name: a.name }; }
-function sameSel(a, b) { return a && b && a.type === b.type && a.world === b.world && a.name === b.name && a.id === b.id; }
-function drawSelection(t) {
-  for (const [sel, color, dash] of [[owHover, "rgba(231,226,246,0.5)", false], [owSel, C.coluan, true]]) {
-    if (!sel) continue;
-    const hit = owHits.filter(h => sameSel(h.sel, sel)).sort((a, b) => b.z - a.z)[0]; if (!hit) continue;
-    og.strokeStyle = color; og.lineWidth = 1; og.setLineDash(dash ? [3, 2] : []); og.lineDashOffset = -t * 8;
-    og.strokeRect(Math.round(hit.x) - .5, Math.round(hit.y) - .5, hit.w + 1, hit.h + 1); og.setLineDash([]);
-  }
-}
+function sameSel(a, b) { return a && b && a.type === b.type && (a.world || null) === (b.world || null) && a.name === b.name && a.id === b.id; }
 
-/* ----------------------------------------------------------------- sizing, input */
+/* ---------------------------------------------------------- camera, input */
+function clampCam() {
+  const hw = VW / 2 / cam.zoom, hh = VH / 2 / cam.zoom;
+  cam.x = Math.max(hw, Math.min(WW - hw, cam.x)); cam.y = Math.max(hh, Math.min(WH - hh, cam.y));
+  if (hw * 2 > WW) cam.x = WW / 2; if (hh * 2 > WH) cam.y = WH / 2;
+}
+function zoomTo(z) { cam.zoom = Math.max(.34, Math.min(3, z)); clampCam(); }
+function focusOn(x, y) { cam.tx = x; cam.ty = y; }
 function owResize() {
-  const box = $("viewport").getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-  if (!box.width) return;
-  owS = Math.max(1, Math.floor(box.width * dpr / LW));
-  owCanvas.width = LW * owS; owCanvas.height = LH * owS;
-  owCanvas.style.width = `${(LW * owS) / dpr}px`; owCanvas.style.height = `${(LH * owS) / dpr}px`;
-  if ((LW * owS) / dpr > box.width + 1) { owCanvas.style.width = "100%"; owCanvas.style.height = "auto"; }
+  const box = $("viewport").getBoundingClientRect(), dpr = window.devicePixelRatio || 1; if (!box.width) return;
+  owS = Math.max(1, Math.floor(box.width * dpr / VW));
+  owCanvas.width = VW * owS; owCanvas.height = VH * owS;
+  owCanvas.style.width = `${VW * owS / dpr}px`; owCanvas.style.height = `${VH * owS / dpr}px`;
+  if (VW * owS / dpr > box.width + 1) { owCanvas.style.width = "100%"; owCanvas.style.height = "auto"; }
 }
 new ResizeObserver(owResize).observe($("viewport"));
-function owPick(ev) {
-  const r = owCanvas.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * LW, y = (ev.clientY - r.top) / r.height * LH;
-  return owHits.filter(h => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h).sort((a, b) => b.z - a.z)[0]?.sel || null;
+function toWorld(ev) { const r = owCanvas.getBoundingClientRect(), sx = (ev.clientX - r.left) / r.width * VW, sy = (ev.clientY - r.top) / r.height * VH;
+  return { sx, sy, x: (sx - VW / 2) / cam.zoom + cam.x, y: (sy - VH / 2) / cam.zoom + cam.y }; }
+function inMinimap(p) { return VW / cam.zoom < WW * .95 && p.sx >= VW - 126 && p.sy >= VH - 81; }
+function owPick(p) { return owHits.filter(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h).sort((a, b) => b.z - a.z)[0]?.sel || null; }
+let drag = null, camTouched = 0;
+owCanvas.addEventListener("pointerdown", ev => { const p = toWorld(ev); drag = { sx: p.sx, sy: p.sy, cx: cam.x, cy: cam.y, moved: false }; owCanvas.setPointerCapture(ev.pointerId); });
+owCanvas.addEventListener("pointermove", ev => {
+  const p = toWorld(ev);
+  if (drag) { const dx = p.sx - drag.sx, dy = p.sy - drag.sy; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (drag.moved) { camTouched = T(); cam.tx = cam.ty = null; cam.x = drag.cx - dx / cam.zoom; cam.y = drag.cy - dy / cam.zoom; clampCam(); } return; }
+  owHover = inMinimap(p) ? null : owPick(p); owCanvas.classList.toggle("hot", !!owHover || inMinimap(p));
+});
+owCanvas.addEventListener("pointerup", ev => {
+  const p = toWorld(ev), d = drag; drag = null; if (d?.moved) return;
+  if (inMinimap(p)) { focusOn((p.sx - (VW - 126)) / 120 * WW, (p.sy - (VH - 81)) / 75 * WH); return; }
+  const s = owPick(p); if (s) { owSel = s; renderInspector(); }
+});
+owCanvas.addEventListener("pointerleave", () => { owHover = null; });
+owCanvas.addEventListener("wheel", ev => { ev.preventDefault(); camTouched = T(); zoomTo(cam.zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15)); }, { passive: false });
+owCanvas.tabIndex = 0;
+owCanvas.addEventListener("keydown", ev => {
+  const step = 40 / cam.zoom, k = ev.key.toLowerCase();
+  const moves = { arrowleft: [-step, 0], a: [-step, 0], arrowright: [step, 0], d: [step, 0], arrowup: [0, -step], w: [0, -step], arrowdown: [0, step], s: [0, step] };
+  if (moves[k]) { ev.preventDefault(); camTouched = T(); cam.tx = cam.ty = null; cam.x += moves[k][0]; cam.y += moves[k][1]; clampCam(); }
+  else if (k === "+" || k === "=") zoomTo(cam.zoom * 1.25); else if (k === "-") zoomTo(cam.zoom / 1.25);
+  else if (k === "b" || k === "home") { owSel = { type: "brainiac" }; focusOn(CX, CY); renderInspector(); }
+});
+$("zoomIn").onclick = () => zoomTo(cam.zoom * 1.25); $("zoomOut").onclick = () => zoomTo(cam.zoom / 1.25);
+$("zoomFit").onclick = () => { zoomTo(Math.min(VW / WW, VH / WH)); cam.x = WW / 2; cam.y = WH / 2; };
+$("focusBrainiac").onclick = () => { owSel = { type: "brainiac" }; zoomTo(Math.max(cam.zoom, 1)); focusOn(CX, CY); renderInspector(); };
+function focusSel(sel) {
+  if (sel.type === "brainiac") return focusOn(CX, CY);
+  if (sel.type === "steward") { const d = districts().find(x => x.world.slug === sel.world); if (d) focusOn(d.x, d.y); return; }
+  if (sel.type === "specialist") { const a = owActors.get(`${sel.world || "core"}/${sel.name}`); if (a) focusOn(a.x, a.y); return; }
+  if (sel.type === "room" && SITES[sel.id]) focusOn(SITES[sel.id].x, SITES[sel.id].y);
 }
-owCanvas.addEventListener("mousemove", ev => { owHover = owPick(ev); owCanvas.classList.toggle("hot", !!owHover); });
-owCanvas.addEventListener("mouseleave", () => { owHover = null; });
-owCanvas.addEventListener("click", ev => { const s = owPick(ev); if (s) { owSel = s; renderInspector(); } });
 
-/* -------------------------------------------------------------------- inspector */
+/* ------------------------------------------------------------- inspector */
 let inspTimer = null;
-function scheduleInspector() { if (!inspTimer) inspTimer = setTimeout(() => { inspTimer = null; renderInspector(); }, 350); }
+function scheduleInspector() { if (!inspTimer) inspTimer = setTimeout(() => { inspTimer = null; renderInspector(); }, 400); }
 function fmtAgo(ts) { const s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; }
+function owToast(msg, err) { const m = $("owMsg"); m.className = "form-msg " + (err ? "err" : "ok"); m.textContent = msg; clearTimeout(owToast.t); owToast.t = setTimeout(() => (m.textContent = ""), 5000); }
 async function control(action, run, body = {}) {
   if (!LIVE) return demoControl(action, run, body);
-  try { await api(`/api/runs/${action}`, { id: run.id, ...body }); pollState(); return true; }
-  catch (e) { owToast(e.message, true); return false; }
+  try { await api(`/api/runs/${action}`, { id: run.id, ...body }); pollState(); return true; } catch (e) { owToast(e.message, true); return false; }
 }
-function owToast(text, err) { const m = $("owMsg"); m.className = "form-msg " + (err ? "err" : "ok"); m.textContent = text; clearTimeout(owToast.t); owToast.t = setTimeout(() => (m.textContent = ""), 5000); }
+async function act(path, body, ok, demo) {
+  if (!LIVE) { if (demo) return demo(); owToast("Example data. Run python -m brainiac app to command your own Brainiac.", true); return null; }
+  try { const r = await api(path, body); if (ok) owToast(ok); pollState(); return r; } catch (e) { owToast(e.message, true); return null; }
+}
+function field(lbl, node) { const l = el("label"); l.htmlFor = node.id; l.append(lbl, node); return l; }
+function input(id, ph = "", type = "text") { const i = el("input"); i.id = id; i.placeholder = ph; i.type = type; i.autocomplete = "off"; return i; }
+function area(id, ph = "") { const a = el("textarea"); a.id = id; a.placeholder = ph; return a; }
+function btn(textv, cls, fn) { const b = el("button", "btn " + (cls || ""), textv); b.type = "button"; if (fn) b.onclick = fn; return b; }
+function armed(textv, confirmText, fn) {
+  const b = btn(textv, "danger");
+  b.onclick = () => { if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = confirmText; setTimeout(() => { b.classList.remove("armed"); b.textContent = textv; }, 3500); return; } fn(); };
+  return b;
+}
+function head(kind, title, sub, status, model) {
+  const h = el("div", "insp-head");
+  if (model) { const c = el("canvas", "portrait"); const m = modelCanvas(model); c.width = m.width * 4; c.height = m.height * 4; const g = c.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(m, 0, 0, c.width, c.height); c.setAttribute("aria-hidden", "true"); h.append(c); }
+  const tx = el("div"); tx.append(el("span", "kind", kind), el("h3", null, title));
+  if (status) tx.append(el("span", "status-pill " + status, status === "working" ? "Working" : status[0].toUpperCase() + status.slice(1)));
+  h.append(tx); if (sub) h.append(el("p", null, sub)); return h;
+}
+function section(title, ...kids) { const s = el("div", "mind-block"); s.append(el("h3", null, title), ...kids); return s; }
+function details(summary, ...kids) { const d = el("details", "seal"); d.append(el("summary", null, summary), ...kids); return d; }
+function rosterButton(label, small, sel) { const b = el("button"); b.type = "button"; b.append(el("span", null, label), el("small", null, small)); b.onclick = () => { owSel = sel; focusSel(sel); renderInspector(); }; return b; }
 function runCard(run) {
   const card = el("div", "runcard");
-  const pill = el("span", "status-pill " + (run.status === "running" ? "working" : run.status), run.status === "running" ? "Working" : run.status === "paused" ? "Paused" : "Stopping");
-  card.append(pill, el("div", "goal", run.goal));
-  const meta = el("div", "meta");
-  meta.append(el("span", null, `step ${run.step}`), el("span", null, run.current ? `now: ${run.current}` : "starting"), el("span", null, `${fmtAgo(run.started)} running`));
-  if (run.notes_pending) meta.append(el("span", null, `${run.notes_pending} note waiting`));
-  card.append(meta);
+  card.append(el("span", "status-pill " + (run.status === "running" ? "working" : run.status), run.status === "running" ? "Working" : run.status === "paused" ? "Paused" : "Stopping"), el("div", "goal", run.goal));
+  const meta = el("div", "meta"); meta.append(el("span", null, `step ${run.step}`), el("span", null, run.current ? `now: ${run.current}` : "starting"), el("span", null, `${fmtAgo(run.started)} running`));
+  if (run.notes_pending) meta.append(el("span", null, `${run.notes_pending} note waiting`)); card.append(meta);
   const row = el("div", "row-actions");
-  const toggle = el("button", "btn small", run.status === "paused" ? "Resume" : "Pause"); toggle.type = "button";
+  const toggle = btn(run.status === "paused" ? "Resume" : "Pause", "small", () => control(run.status === "paused" ? "resume" : "pause", run).then(ok => ok && owToast(run.status === "paused" ? "Resumed." : "Pausing at the next safe point.")));
   toggle.disabled = run.status === "stopping";
-  toggle.onclick = () => control(run.status === "paused" ? "resume" : "pause", run).then(ok => ok && owToast(run.status === "paused" ? "Resumed." : "Pausing at the next safe point."));
-  const stop = el("button", "btn small danger", "Stop"); stop.type = "button"; stop.disabled = run.status === "stopping";
-  stop.onclick = () => { if (!stop.classList.contains("armed")) { stop.classList.add("armed"); stop.textContent = "Confirm stop"; setTimeout(() => { stop.classList.remove("armed"); stop.textContent = "Stop"; }, 3000); return; }
-    control("stop", run).then(ok => ok && owToast("Stopping. Anything it started stops too.")); };
+  const stop = armed("Stop", "Confirm stop", () => control("stop", run).then(ok => ok && owToast("Stopping. Anything it started stops too."))); stop.classList.add("small"); stop.disabled = run.status === "stopping";
   row.append(toggle, stop); card.append(row);
-  const nid = "note-" + run.id;
-  const lab = el("label"); lab.htmlFor = nid; lab.textContent = "Redirect: an instruction delivered at its next step";
-  const ta = el("textarea"); ta.id = nid; ta.placeholder = "Skip the diagram; just give me the numbers.";
-  const send = el("button", "btn small node", "Send instruction"); send.type = "button";
-  send.onclick = () => { const v = ta.value.trim(); if (!v) return; control("note", run, { text: v }).then(ok => { if (ok) { ta.value = ""; owToast("Instruction sent. It arrives at the agent's next step."); } }); };
-  lab.append(ta); card.append(lab, send);
+  const ta = area("note-" + run.id, "Skip the diagram; just give me the numbers.");
+  card.append(field("Redirect: an instruction delivered at its next step", ta), btn("Send instruction", "small node", () => { const v = ta.value.trim(); if (!v) return; control("note", run, { text: v }).then(ok => { if (ok) { ta.value = ""; owToast("Instruction sent. It arrives at the agent's next step."); } }); }));
   return card;
 }
-function actionsLog(filter) {
-  const box = el("div", "actions-log");
-  const noise = new Set(["affect", "run_start", "run_end", "note_delivered"]);
-  const list = events.filter(e => !noise.has(e.kind) && (e.kind !== "tool_result" || e.data?.error)).filter(filter).slice(-14).reverse();
+function actionsLog(filter, n = 14) {
+  const box = el("div", "actions-log"), noise = new Set(["affect", "run_start", "run_end", "note_delivered"]);
+  const list = events.filter(e => !noise.has(e.kind) && (e.kind !== "tool_result" || e.data?.error)).filter(filter).slice(-n).reverse();
   if (!list.length) box.append(el("div", null, "No activity recorded yet."));
   for (const e of list) {
     const d = e.data || {}, line = el("div");
-    const what = e.kind === "tool_result" ? ["✗ ", el("b", null, d.name), " failed: " + String(d.output || "").slice(0, 100)]
-      : e.kind === "tool" ? ["▸ ", el("b", null, d.name)] : e.kind === "thought" ? [(typeof d === "string" ? d : d.text || "").slice(0, 140)]
-      : e.kind === "run_note" ? ["✉ ", d.note] : e.kind === "spawn" ? ["deployed: ", d.task] : e.kind === "lesson" ? ["learned: ", d.content]
-      : [e.kind.replace(/_/g, " ")];
+    const what = e.kind === "tool_result" ? ["✗ ", el("b", null, d.name), " failed: " + String(d.output || "").slice(0, 100)] : e.kind === "tool" ? ["▸ ", el("b", null, d.name)]
+      : e.kind === "thought" ? [(typeof d === "string" ? d : d.text || "").slice(0, 160)] : e.kind === "run_note" ? ["✉ ", d.note] : e.kind === "spawn" ? ["deployed: ", d.task]
+      : e.kind === "lesson" ? ["learned: ", d.content] : e.kind === "alert" ? ["⚠ ", d.watch + ": " + d.message] : e.kind === "journal" ? ["journal: ", d.entry] : [e.kind.replace(/_/g, " ")];
     line.append(fmtTime(e.ts) + "  ", ...what); box.append(line);
   }
   return box;
 }
-function head(kind, title, sub, status) {
-  const h = el("div", "insp-head"); h.append(el("span", "kind", kind), el("h3", null, title));
-  if (status) h.append(el("span", "status-pill " + status, status === "working" ? "Working" : status[0].toUpperCase() + status.slice(1)));
-  if (sub) h.append(el("p", null, sub));
-  return h;
+function statesBlock(m) {
+  const st = el("div", "states");
+  for (const k of ["confidence", "curiosity", "strain", "satisfaction"]) { const v = m.affect[k] ?? 0, row = el("div", "state " + k), tr = el("div", "track"), f = el("div", "fill");
+    f.style.width = `${Math.round(v * 100)}%`; tr.append(f); row.append(el("span", "label", k[0].toUpperCase() + k.slice(1)), tr, el("span", "word", (m.affect_words || {})[k] || v.toFixed(2))); st.append(row); }
+  return st;
 }
-function section(title, ...kids) { const s = el("div", "mind-block"); s.append(el("h3", null, title), ...kids); return s; }
-function rosterButton(text, small, sel) { const b = el("button"); b.type = "button"; b.append(el("span", null, text), el("small", null, small)); b.onclick = () => { owSel = sel; renderInspector(); }; return b; }
-function createForm(world) {
-  const det = el("details", "seal"); det.append(el("summary", null, "Create a specialist here"));
-  const f = el("form", "inline-form"); const id = p => `cf-${world || "core"}-${p}`;
-  const field = (lbl, node) => { const l = el("label"); l.htmlFor = node.id; l.append(lbl, node); return l; };
-  const name = el("input"); name.id = id("name"); name.maxLength = 40; name.placeholder = "comet-tracker";
-  const purpose = el("input"); purpose.id = id("purpose"); purpose.placeholder = "Tracks small bodies and integrates their orbits";
-  const prompt = el("textarea"); prompt.id = id("prompt"); prompt.placeholder = "You are a specialist in orbital mechanics. …";
+function specialistForm(world) {
+  const id = p => `cf-${world || "core"}-${p}`;
+  const name = input(id("name"), "comet-tracker"), purpose = input(id("purpose"), "Tracks small bodies and integrates their orbits"), prompt = area(id("prompt"), "You are a specialist in orbital mechanics. …");
   const tools = el("div", "tools-pick");
   for (const tl of state.agent_tools || ["current_time", "recall", "remember", "update_plan", "decide", "list_files", "read_file", "write_file", "run_python", "render_document", "render_pixel_art", "render_svg"]) {
-    const l = el("label"); const c = el("input"); c.type = "checkbox"; c.value = tl; c.id = id("t-" + tl); c.checked = ["recall", "read_file", "write_file"].includes(tl); l.htmlFor = c.id; l.append(c, tl); tools.append(l);
-  }
-  const go = el("button", "btn node", "Create specialist"); go.type = "submit";
-  const msg = el("p", "form-msg"); msg.setAttribute("role", "status");
-  f.append(field("Name", name), field("Purpose", purpose), field("System prompt", prompt), el("span", "sub", "Tools"), tools, go, msg);
-  f.onsubmit = async ev => {
-    ev.preventDefault();
-    const body = { name: name.value.trim(), purpose: purpose.value.trim(), system_prompt: prompt.value.trim(), world,
-      tools: [...tools.querySelectorAll("input:checked")].map(c => c.value) };
-    if (!LIVE) { demoCreate(body); f.reset(); det.open = false; return; }
-    try { await api("/api/agents/create", body); msg.className = "form-msg ok"; msg.textContent = "Brainiac is building it."; f.reset(); pollState(); }
-    catch (e) { msg.className = "form-msg err"; msg.textContent = e.message; }
-  };
-  det.append(f); return det;
+    const l = el("label"), c = el("input"); c.type = "checkbox"; c.value = tl; c.id = id("t-" + tl); c.checked = ["recall", "read_file", "write_file"].includes(tl); l.htmlFor = c.id; l.append(c, tl); tools.append(l); }
+  const preview = el("canvas", "portrait small"); preview.setAttribute("aria-hidden", "true");
+  const paint = () => { const m = modelCanvas(genModel(name.value || "new", purpose.value)); preview.width = m.width * 3; preview.height = m.height * 3; const g = preview.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, preview.width, preview.height); g.drawImage(m, 0, 0, preview.width, preview.height); };
+  name.oninput = purpose.oninput = paint; paint();
+  const f = el("form", "inline-form"), msg = el("p", "form-msg"); msg.setAttribute("role", "status");
+  f.append(preview, el("span", "sub", LIVE ? "Preview; Brainiac renders its final model." : "Its model, generated from name and purpose."), field("Name", name), field("Purpose", purpose), field("System prompt", prompt), el("span", "sub", "Tools"), tools, btn("Create specialist", "node"), msg);
+  f.querySelector("button.node").type = "submit";
+  f.onsubmit = async ev => { ev.preventDefault();
+    const body = { name: name.value.trim(), purpose: purpose.value.trim(), system_prompt: prompt.value.trim(), world, tools: [...tools.querySelectorAll("input:checked")].map(c => c.value) };
+    const r = await act("/api/agents/create", body, "Brainiac is building it.", () => demoCreate(body)); if (r !== null) f.reset(); };
+  return details("Create a specialist here", f);
+}
+function talkBlock() {
+  const box = el("div", "talk"), log = el("div", "actions-log");
+  const turns = events.filter(e => (e.kind === "task_start" && !e.world && myTasks.has(e.task)) || (e.kind === "task_end" && !e.world && myTasks.has(e.task))).slice(-6);
+  for (const e of turns) { const line = el("div"); line.append(el("b", null, e.kind === "task_start" ? "You: " : "Brainiac: "), String(e.kind === "task_start" ? e.data.goal : e.data.result || e.data.error || "").slice(0, 400)); log.append(line); }
+  if (!turns.length) log.append(el("div", null, "Speak to him here. He remembers the conversation."));
+  const ta = area("talkInput", "What should we work on?");
+  const send = btn("Send", "primary small", async () => { const v = ta.value.trim(); if (!v) return;
+    if (!LIVE) { owToast("Example data. Run python -m brainiac app to talk to your own Brainiac.", true); return; }
+    try { const r = await api("/api/directive", { goal: v }); myTasks.add(r.task); ta.value = ""; owToast("Brainiac is on it."); pollState(); } catch (e) { owToast(e.message, true); } });
+  const row = el("div", "row-actions"); row.append(send);
+  if (SR) row.append(btn("Speak", "small", () => { const r = new SR(); r.lang = navigator.language || "en-GB"; r.onresult = e2 => { ta.value = e2.results[0][0].transcript; send.click(); }; r.onerror = () => owToast("Speech input failed or was refused.", true); try { r.start(); owToast("Listening…"); } catch { owToast("Speech input is not available here.", true); } }));
+  const speak = el("label", "toggle"), cb = el("input"); cb.type = "checkbox"; cb.id = "talkSpeak"; cb.checked = $("speakReplies").checked; cb.onchange = () => { $("speakReplies").checked = cb.checked; $("speakReplies").dispatchEvent(new Event("change")); }; speak.htmlFor = "talkSpeak"; speak.append(cb, "Read replies aloud");
+  row.append(speak);
+  box.append(log, field("Message", ta), row); return box;
+}
+function settingsBlock() {
+  const box = el("div", "row-actions");
+  const auto = state.autonomous;
+  box.append(auto ? btn("Switch to supervised", "small", () => act("/api/settings", { autonomous: false }, "Supervised: risky actions will ask first."))
+    : armed("Switch to autonomous", "Confirm: act without asking", () => act("/api/settings", { autonomous: true }, "Autonomous: Brainiac acts without asking.")));
+  box.querySelector("button").classList.add("small");
+  box.append(btn(state.web ? "Turn web off" : "Turn web on", "small", () => act("/api/settings", { web: !state.web }, state.web ? "Web access off." : "Web access on.")));
+  if (LIVE && state.key) box.append(btn(state.key.configured ? "Replace API key" : "Add API key", "small", () => showKey(true)));
+  return box;
 }
 function renderInspector() {
   const box = $("inspector"); if (!state) return;
+  const focused = document.activeElement && box.contains(document.activeElement) ? document.activeElement : null;
+  if (focused && (focused.matches("textarea, input:not([type=checkbox])") || focused.closest("details[open] form"))) return;  // never rebuild under the cursor
   const s = owSel, kids = [];
   if (s.type === "brainiac") {
     const runs = runsFor("brainiac"), m = state.mind;
-    kids.push(head(brain.job ? "Overseer · away from the post" : "Overseer · at the post", "Brainiac", brain.job ? (brain.job.kind === "create" ? "Building a specialist." : "Decommissioning a specialist.") : "Commands the station from the central post.", statusOf("brainiac")));
-    if (m) { const st = el("div", "states"); for (const k of ["confidence", "curiosity", "strain", "satisfaction"]) { const v = m.affect[k] ?? 0, row = el("div", "state " + k), tr = el("div", "track"), f = el("div", "fill"); f.style.width = `${Math.round(v * 100)}%`; tr.append(f); row.append(el("span", "label", k[0].toUpperCase() + k.slice(1)), tr, el("span", "word", (m.affect_words || {})[k] || v.toFixed(2))); st.append(row); } kids.push(st); }
-    kids.push(section(runs.length ? "Directives in progress" : "Directives", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle. Issue a directive below the viewport.")])));
+    kids.push(head(brain.job ? "Overseer · away from the citadel" : "Overseer · Aureus Command", "Brainiac", brain.job ? (brain.job.kind === "create" ? "Building a specialist." : "Decommissioning a specialist.") : "The focal intelligence. Everything on this map answers to him.", statusOf("brainiac"), brainiacModel()));
+    if ((state.approvals || []).length) kids.push(section("Awaiting your approval", ...state.approvals.map(a => approvalCard(a))));
+    kids.push(section("Talk", talkBlock()));
+    kids.push(section(runs.length ? "Directives in progress" : "Directives", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle.")])));
+    if (m) { kids.push(section("Mind", statesBlock(m), el("p", null, m.focus ? `Focus: ${m.focus}` : "No particular focus yet.")));
+      const j = el("div", "journal"); for (const e of (m.journal || []).slice(-3).reverse()) { const q = el("blockquote", null, e.entry); q.append(el("span", null, fmtTime(e.ts))); j.append(q); }
+      if (!(m.journal || []).length) j.append(el("p", "empty", "He writes an entry after each directive.")); kids.push(section("Journal", j));
+      if (m.open_threads?.length) { const ul = el("ul"); m.open_threads.forEach(x => ul.append(el("li", null, x))); kids.push(section("Holding open", ul)); } }
+    kids.push(section("Command settings", settingsBlock()));
     kids.push(section("Recent actions", actionsLog(e => !e.world && (e.data?.run ? runIndex.get(e.data.run) === "brainiac" : ["thought", "deliberation", "journal"].includes(e.kind)))));
-    kids.push(section("Station roster", rosterList()));
+    kids.push(section("Go to", rosterList()));
   } else if (s.type === "steward") {
     const w = owWorlds().find(x => x.slug === s.world); if (!w) { owSel = { type: "brainiac" }; return renderInspector(); }
     const key = "steward:" + w.slug, runs = runsFor(key);
-    kids.push(head("World · steward", w.name, w.charter, statusOf(key)));
-    if (w.laws?.length) kids.push(section("Laws", (() => { const ul = el("ul"); w.laws.forEach(l => ul.append(el("li", null, l))); return ul; })()));
-    kids.push(section(runs.length ? "Steward is working on" : "Steward", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle. Send this world a directive with the Send to menu.")])));
-    const roster = el("div", "roster");
-    for (const a of w.agents || []) roster.append(rosterButton(a.name, statusOf(`${w.slug}/${a.name}`), { type: "specialist", world: w.slug, name: a.name }));
-    if (!(w.agents || []).length) roster.append(el("p", "empty", "No specialists in this world yet."));
-    kids.push(section(`Specialists (${(w.agents || []).length})`, roster), createForm(w.slug));
+    kids.push(head("World district · steward", w.name, w.charter, statusOf(key), stewardModel(w.slug, w.name)));
+    if (w.laws?.length) { const ul = el("ul"); w.laws.forEach(l => ul.append(el("li", null, l))); kids.push(section("Laws", ul)); }
+    kids.push(section(runs.length ? "Steward is working on" : "Steward", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle.")])));
+    const ta = area("wd-" + w.slug, `Directive for ${w.name}…`);
+    kids.push(section("Command this world", field("Directive", ta), btn("Send to steward", "small node", async () => { const v = ta.value.trim(); if (!v) return; const r = await act("/api/directive", { goal: v, world: w.slug }, `Sent to the ${w.name} steward.`); if (r) { myTasks.add(r.task); ta.value = ""; } })));
+    const roster = el("div", "roster"); for (const a of w.agents || []) roster.append(rosterButton(a.name, statusOf(`${w.slug}/${a.name}`), { type: "specialist", world: w.slug, name: a.name }));
+    if (!(w.agents || []).length) roster.append(el("p", "empty", "No specialists here yet."));
+    kids.push(section(`Specialists (${(w.agents || []).length})`, roster), specialistForm(w.slug));
+    kids.push(section("Stats", el("p", null, `${w.tasks} directives · ${w.files} files · ${w.memory?.total ?? 0} memories`)));
     kids.push(section("Recent actions", actionsLog(e => e.world === w.slug)));
   } else if (s.type === "specialist") {
     const key = `${s.world || "core"}/${s.name}`, a = owActors.get(key), runs = runsFor(key);
     const spec = a?.spec || (s.world ? owWorlds().find(w => w.slug === s.world)?.agents?.find(x => x.name === s.name) : (state.core_agents || []).find(x => x.name === s.name)) || {};
-    kids.push(head(`Specialist · ${s.world ? worldName(s.world) : "core bay"}`, s.name, spec.purpose || "", pendingDeletes.has(key) ? "stopping" : statusOf(key)));
+    const model = a ? modelOf(a) : spec.model || genModel(s.name, spec.purpose || "");
+    kids.push(head(`Specialist · ${s.world ? worldName(s.world) : "barracks"}`, s.name, spec.purpose || "", pendingDeletes.has(key) ? "stopping" : statusOf(key), model));
+    kids.push(section("Model", el("p", null, model.custom ? "Custom design by Brainiac." : `${model.archetype} body plan, generated from its name and purpose. Ask Brainiac to redesign it.`)));
     if (spec.tools) kids.push(section("Tools", el("p", null, spec.tools.join(" · "))));
-    kids.push(section(runs.length ? "Working on" : "Assignment", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle. Brainiac or the steward deploys it when work fits its purpose.")])));
+    kids.push(section(runs.length ? "Working on" : "Assignment", ...(runs.length ? runs.map(runCard) : [el("p", "empty", "Idle. It wanders its district until deployed.")])));
     kids.push(section("Recent actions", actionsLog(e => e.data?.agent === s.name && (e.world || null) === (s.world || null))));
-    const del = el("button", "btn danger", "Delete specialist"); del.type = "button";
-    del.onclick = async () => {
-      if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = runs.length ? "Confirm: stop its work and delete" : "Confirm delete"; setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete specialist"; }, 3500); return; }
-      if (!LIVE) { demoDelete(s.world, s.name); return; }
-      try { await api("/api/agents/delete", { name: s.name, world: s.world }); owToast(`Brainiac is decommissioning ${s.name}.`); pollState(); } catch (e) { owToast(e.message, true); }
-    };
-    kids.push(section("Decommission", el("p", "empty", "Brainiac comes down from his post and removes it. Any work it is doing stops."), del));
-  } else {
-    const id = s.id;
-    if (id === "bay") {
-      kids.push(head("Room", "Specialist bay", "Brainiac's own specialists, outside any world."));
-      const roster = el("div", "roster"); for (const a of state.core_agents || []) roster.append(rosterButton(a.name, statusOf(`core/${a.name}`), { type: "specialist", world: null, name: a.name }));
-      if (!(state.core_agents || []).length) roster.append(el("p", "empty", "Empty. Brainiac builds specialists here when work splits into parallel parts."));
-      kids.push(section("Specialists", roster), createForm(null));
-    } else if (id === "archive") {
-      const c = state.collection;
-      kids.push(head("Room", "Archive", "The Collection: everything Brainiac has learned."));
-      kids.push(section("Holdings", el("p", null, Object.entries(c.kinds).map(([k, n]) => `${n} ${k}`).join(" · ") || "Empty")));
-      kids.push(section("Recently learned", actionsLog(e => e.kind === "lesson")));
-    } else if (id === "dock") {
-      kids.push(head("Room", "Dock", "Connected systems. Only you can connect one: use the Console tab or `brainiac connect`."));
-      const ul = el("ul", "list"); for (const i of state.integrations || []) ul.append(el("li", null, `${i.name} · ${i.type === "url" ? "remote" : "local"}${i.tools?.length ? " · " + i.tools.join(", ") : ""}`));
-      if (!(state.integrations || []).length) ul.append(el("li", "sub", "Nothing connected."));
-      kids.push(ul, section("Recent use", actionsLog(e => e.kind === "tool" && (e.data?.name || "").includes("__"))));
-    } else if (id === "watch") {
-      kids.push(head("Room", "Watchtower", "Watches and reminders, checked while Brainiac runs."));
-      const ul = el("ul", "list"); for (const w of state.watches || []) ul.append(el("li", null, `${w.name} · ${w.kind}`));
-      if (!(state.watches || []).length) ul.append(el("li", "sub", "Nothing watched."));
-      kids.push(ul, section("Alerts", actionsLog(e => e.kind === "alert")));
-    } else if (id === "core") { owSel = { type: "brainiac" }; return renderInspector(); }
-    else { kids.push(head("Sector", "Unclaimed", "Seal a world in the Console tab, or ask Brainiac to create one, and it appears here.")); }
+    kids.push(section("Decommission", el("p", "empty", "Brainiac comes down from the citadel and removes it. Any work it is doing stops."),
+      armed("Delete specialist", runs.length ? "Confirm: stop its work and delete" : "Confirm delete", () => act("/api/agents/delete", { name: s.name, world: s.world }, `Brainiac is decommissioning ${s.name}.`, () => demoDelete(s.world, s.name)))));
+  } else renderSite(s.id, kids);
+  box.replaceChildren(...kids);
+}
+function renderSite(id, kids) {
+  if (id === "bay") {
+    kids.push(head("Site", "Barracks", "Brainiac's own specialists, outside any world."));
+    const roster = el("div", "roster"); for (const a of state.core_agents || []) roster.append(rosterButton(a.name, statusOf(`core/${a.name}`), { type: "specialist", world: null, name: a.name }));
+    if (!(state.core_agents || []).length) roster.append(el("p", "empty", "Empty."));
+    kids.push(section("Specialists", roster), specialistForm(null));
+  } else if (id === "archive") {
+    const c = state.collection;
+    kids.push(head("Site", "Archive", "The Collection: everything Brainiac has learned and been taught."));
+    kids.push(section("Holdings", el("p", null, Object.entries(c.kinds || {}).map(([k, n]) => `${n} ${k}`).join(" · ") || "Empty")));
+    const q = input("arcSearch", "coyote time"), out = el("div", "recall-out");
+    q.oninput = () => { clearTimeout(q.t); q.t = setTimeout(async () => { out.replaceChildren(); const v = q.value.trim(); if (!v) return;
+      let res = []; if (LIVE) { try { res = (await api(`/api/recall?q=${encodeURIComponent(v)}`)).results; } catch {} }
+      else res = events.filter(e => e.kind === "lesson" && e.data.content.toLowerCase().includes(v.toLowerCase())).map((e, i) => ({ id: i + 1, kind: "lesson", topic: e.data.topic, content: e.data.content }));
+      if (!res.length) out.append(el("p", "empty", "Nothing matches."));
+      for (const r of res) { const a = el("article"); a.append(el("header", null, `${r.kind} #${r.id} · ${r.topic}`), r.content); out.append(a); } }, 300); };
+    kids.push(section("Search", field("What does Brainiac know about…", q), out));
+    const topic = input("teachTopic", "brewing"), body = area("teachText", "# Green tea\nSteep at 80°C for two minutes.");
+    kids.push(details("Teach Brainiac", el("div", "inline-form"), field("Topic", topic), field("Material (Markdown; one idea per heading)", body),
+      btn("Teach", "node small", async () => { const r = await act("/api/teach", { topic: topic.value.trim(), text: body.value.trim() }, "Taught."); if (r) { owToast(`Catalogued ${r.entries} new entries.`); topic.value = body.value = ""; } })));
+    const pbs = el("ul", "list"); for (const p of state.playbooks || []) pbs.append(el("li", null, `${p.name.replace(/^playbook:/, "")} · ${p.uses ? `${p.wins}/${p.uses} won` : "new"}${p.avg_steps != null ? ` · ${p.avg_steps} steps avg` : ""}`));
+    if (!(state.playbooks || []).length) pbs.append(el("li", "sub", "None yet."));
+    kids.push(section("Playbooks", pbs), section("Recently learned", actionsLog(e => e.kind === "lesson" || e.kind === "taught")));
+  } else if (id === "dock") {
+    kids.push(head("Site", "Dock", "Connected systems. Only you can connect one; Brainiac can only use them."));
+    const ul = el("div", "roster");
+    for (const i of state.integrations || []) { const row = el("div", "runcard"); row.append(el("div", "goal", `${i.name} · ${i.type === "url" ? (i.trusted ? "remote, trusted" : "remote") : "local"}`), el("div", "meta", i.error || (i.tools?.length ? i.tools.join(" · ") : "starts on first use")),
+      btn("Disconnect", "small", () => act("/api/integrations/remove", { name: i.name }, `${i.name} disconnected.`))); ul.append(row); }
+    if (!(state.integrations || []).length) ul.append(el("p", "empty", "Nothing connected."));
+    kids.push(section("Connected", ul), btn("Connect the demo smart-home", "small node", () => act("/api/integrations/demo", {}, "Demo smart-home connected. Try: turn the lab lights on.")));
+    const n = input("dkName", "calendar"), cmd = input("dkCmd", "npx -y @modelcontextprotocol/server-filesystem ~/Documents"), url = input("dkUrl", "https://…"), tok = input("dkTok", "", "password");
+    const tr = el("label", "toggle"), tc = el("input"); tc.type = "checkbox"; tc.id = "dkTrusted"; tr.htmlFor = "dkTrusted"; tr.append(tc, "Trusted: remote tools run without per-call approval");
+    kids.push(details("Connect a system", field("Name", n), field("Local MCP server command", cmd), field("or remote MCP server URL", url), field("Access token (remote only)", tok), tr,
+      btn("Connect", "node small", () => act("/api/integrations", { name: n.value.trim(), command: cmd.value.trim(), url: url.value.trim(), token: tok.value, trusted: tc.checked }, `${n.value.trim()} connected.`))));
+    kids.push(section("Recent use", actionsLog(e => e.kind === "tool" && (e.data?.name || "").includes("__"))));
+  } else if (id === "watch") {
+    kids.push(head("Site", "Watchtower", "Watches and reminders, checked while Brainiac runs."));
+    const ul = el("div", "roster");
+    for (const w of state.watches || []) { const row = el("div", "runcard"); row.append(el("div", "goal", `${w.name} · ${w.kind}`), el("div", "meta", w.target || w.instruction || w.message || ""), btn("Remove", "small", () => act("/api/unwatch", { id: w.id }, "Watch removed."))); ul.append(row); }
+    if (!(state.watches || []).length) ul.append(el("p", "empty", "Nothing watched."));
+    kids.push(section("Watching", ul));
+    const kind = el("select"); kind.id = "wtKind"; for (const [v, l] of [["file", "File changes"], ["check", "Scheduled check"], ["reminder", "Reminder"]]) kind.append(new Option(l, v));
+    const nm = input("wtName", "Build log"), tg = input("wtTarget", "logs/*.log"), ev = input("wtEvery", "1", "number"), at = input("wtAt", "17:30");
+    kids.push(details("Add a watch", field("Kind", kind), field("Name", nm), field("File, check or reminder text", tg), field("Every (minutes)", ev), field("At (reminders)", at),
+      btn("Add watch", "node small", () => { const k = kind.value, t = tg.value.trim(); act("/api/watches", { kind: k, name: nm.value.trim(), target: k === "file" ? t : "", instruction: k === "file" ? "" : t, every_minutes: Number(ev.value) || 1, at: at.value.trim() }, "Watch added."); })));
+    kids.push(btn("Enable desktop alerts", "small", () => $("notifyBtn").click()));
+    kids.push(section("Alerts", actionsLog(e => e.kind === "alert")));
+  } else if (id === "proving") {
+    const ev = evalReport || DEMO_EVAL, sum = ev.summary;
+    kids.push(head("Site", "Proving Ground", "Jarvis-readiness protocols: how close Brainiac is to the assistant you want."));
+    const tbl = el("div", "roster");
+    for (const t of [1, 2, 3]) { const x = sum[String(t)] || {}; const row = el("div", "runcard");
+      row.append(el("div", "goal", `Tier ${t} · ${x.name}`), el("div", "meta", `${x.PASS || 0} pass · ${x.FAIL || 0} fail · ${x.ERROR || 0} error · ${x.GAP || 0} gap${x.READY ? ` · ${x.READY} ready` : ""}`)); tbl.append(row); }
+    kids.push(section(ev.model ? `Last run · ${ev.run_at}` : "Not measured yet", tbl, el("p", null, ev.model ? `Readiness: ${sum.readiness}% of protocols passing.` : "Run a tier to get a real score. Each protocol makes several API calls.")));
+    const row = el("div", "row-actions");
+    for (const t of [1, 2, 3]) row.append(armed(`Run tier ${t}`, `Confirm: run tier ${t} (uses the API)`, () => act("/api/evals/run", { tiers: [t], confirm: true }, `Tier ${t} is running. Watch the ticker.`)));
+    row.querySelectorAll("button").forEach(b => b.classList.add("small"));
+    kids.push(section("Run", row), section("Progress", actionsLog(e => e.kind.startsWith("eval_"), 10)));
+  } else if (id === "claim") {
+    kids.push(head("Site", "Unclaimed land", "Seal a new world and it becomes a district here, with its own steward."));
+    const n = input("clName", "Orrery"), ch = area("clCharter", "A working model of a star system: simulation, diagrams and data."), lw = area("clLaws", "Every number cites its source.");
+    kids.push(section("Seal a world", field("Name", n), field("Charter", ch), field("Laws, one per line", lw),
+      btn("Seal world", "node small", async () => { const r = await act("/api/worlds", { name: n.value.trim(), charter: ch.value.trim(), laws: lw.value.split("\n").map(x => x.trim()).filter(Boolean) }, "World sealed.", () => demoWorld(n.value.trim(), ch.value.trim()));
+        if (r) { owSel = { type: "steward", world: r.slug }; } })));
   }
-  const scroll = box.scrollTop, focused = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
-  if (focused && /^(note-|cf-)/.test(focused)) return;   // don't rebuild under the operator's cursor
-  box.replaceChildren(...kids); box.scrollTop = scroll;
 }
 function rosterList() {
   const r = el("div", "roster");
-  for (const run of (state.runs || []).filter(x => x.kind !== "brainiac")) {
-    const sel = run.kind === "steward" ? { type: "steward", world: run.world } : { type: "specialist", world: run.world, name: run.name };
-    r.append(rosterButton(run.kind === "steward" ? run.name : run.name, run.status, sel));
-  }
-  for (const w of owWorlds()) r.append(rosterButton(w.name, `world · ${statusOf("steward:" + w.slug)}`, { type: "steward", world: w.slug }));
-  for (const id of ["bay", "archive", "dock", "watch"]) r.append(rosterButton(FIXED[Object.keys(FIXED).find(k => FIXED[k][0] === id)][1], "room", { type: "room", id }));
+  for (const run of (state.runs || []).filter(x => x.kind !== "brainiac")) r.append(rosterButton(run.name, run.status, run.kind === "steward" ? { type: "steward", world: run.world } : { type: "specialist", world: run.world, name: run.name }));
+  for (const w of owWorlds()) r.append(rosterButton(w.name, `district · ${statusOf("steward:" + w.slug)}`, { type: "steward", world: w.slug }));
+  for (const id of ["archive", "bay", "dock", "watch", "proving"]) r.append(rosterButton(SITES[id].name, "site", { type: "room", id }));
   return r;
 }
+async function loadEvals() { if (LIVE) { try { evalReport = await api("/api/evals"); window.__evalRunning = evalReport.running; } catch {} } }
 
-/* ------------------------------------------------------------- pager, tabs, ticker */
-function renderPager() {
-  const n = Math.ceil(owWorlds().length / 4); $("pager").hidden = n <= 1;
-  if (worldPage >= n) worldPage = Math.max(0, n - 1);
-  $("pageLabel").textContent = `worlds ${worldPage + 1}/${Math.max(1, n)}`;
-}
-$("pagePrev").onclick = () => { const n = Math.ceil(owWorlds().length / 4); worldPage = (worldPage - 1 + n) % n; owActors.clear(); owSync(); };
-$("pageNext").onclick = () => { const n = Math.ceil(owWorlds().length / 4); worldPage = (worldPage + 1) % n; owActors.clear(); owSync(); };
+/* -------------------------------------------------------------- tabs, ticker, bar */
 function fillOwTargets() {
   const sel = $("owTarget"), keep = sel.value; sel.replaceChildren(new Option("Brainiac", ""));
   for (const w of owWorlds()) sel.append(new Option(`${w.name} steward`, w.slug));
@@ -1794,26 +1960,27 @@ $("tabOverworld").onclick = () => setTab("overworld"); $("tabConsole").onclick =
 try { if (localStorage.getItem("brainiac.tab") === "console") setTab("console"); } catch {}
 const tickerLines = [];
 function pushTicker(e) {
-  const d = e.data || {}, who = e.world ? worldName(e.world) : "Brainiac";
-  const agent = d.agent ? ` · ${d.agent}` : "";
-  const text = { tool: `▸ ${d.name}`, run_start: `${d.kind} started: ${d.goal}`, run_end: `${d.name} ${d.status}`, agent_created: `specialist built: ${d.name}`,
+  const d = e.data || {}, who = e.world ? worldName(e.world) : "Brainiac", agent = d.agent ? ` · ${d.agent}` : "";
+  const textv = { tool: `▸ ${d.name}`, run_start: `${d.kind} started: ${d.goal}`, run_end: `${d.name} ${d.status}`, agent_created: `specialist built: ${d.name}`,
     agent_deleted: `specialist decommissioned: ${d.name}`, alert: `ALERT ${d.watch}: ${d.message}`, lesson: `learned: ${d.content}`, run_paused: `${d.name} paused`,
     run_resumed: `${d.name} resumed`, run_note: `instruction to ${d.name}: ${d.note}`, deliberation: `deliberating (${d.mode})`, journal: "wrote in the journal",
-    thought: (typeof d === "string" ? d : d.text || "").slice(0, 120), world_created: `world sealed: ${d.name}` }[e.kind];
-  if (!text) return;
-  tickerLines.push([fmtTime(e.ts), who + agent, text]); if (tickerLines.length > 6) tickerLines.shift();
-  const t = $("ticker"); t.replaceChildren(...tickerLines.map(([ts, w, x]) => { const d2 = el("div"); d2.append(ts + "  ", el("b", null, w), "  " + x); return d2; }));
+    thought: (typeof d === "string" ? d : d.text || "").slice(0, 120), world_created: `world sealed: ${d.name}`, model_updated: `new model for ${d.name}`,
+    taught: `taught ${d.entries} entries on ${d.topic}`, eval_start: `proving ground: ${d.protocols} protocols`, eval_progress: d.line, eval_end: d.ok ? `proving ground: ${d.readiness}% readiness` : `proving ground failed: ${d.error}`,
+    settings: `settings: ${Object.entries(d).map(([k, v]) => `${k} ${v ? "on" : "off"}`).join(", ")}` }[e.kind];
+  if (e.kind === "eval_end") { window.__evalRunning = false; loadEvals(); } if (e.kind === "eval_start") window.__evalRunning = true;
+  if (!textv) return;
+  tickerLines.push([fmtTime(e.ts), who + agent, textv]); if (tickerLines.length > 6) tickerLines.shift();
+  $("ticker").replaceChildren(...tickerLines.map(([ts, w, x]) => { const line = el("div"); line.append(ts + "  ", el("b", null, w), "  " + x); return line; }));
 }
 $("owCmd").addEventListener("submit", async ev => {
   ev.preventDefault();
   const goal = $("owGoal").value.trim(), world = $("owTarget").value || null; if (!goal) return;
-  if (!LIVE) { owToast("This is example data. Run python -m brainiac app to command your own Brainiac.", true); return; }
-  try { const r = await api("/api/directive", { goal, world }); myTasks.add(r.task); $("owGoal").value = ""; owToast(`Directive sent to ${world ? worldName(world) : "Brainiac"}.`); pollState(); }
-  catch (e) { owToast(e.message, true); }
+  const r = await act("/api/directive", { goal, world }, `Directive sent to ${world ? worldName(world) : "Brainiac"}.`);
+  if (r) { myTasks.add(r.task); $("owGoal").value = ""; }
 });
 
-/* ---------------------------------------------------------------- example timeline */
-const demo = { t: 0, last: 0, step: 0, stopped: new Set(), runs: {} };
+/* --------------------------------------------------------------- example timeline */
+const demo = { t: 0, last: 0, step: 0, stopped: new Set() };
 const DEMO_GOAL = "Track the new comet and model its flyby in Orrery";
 function dRun(id, kind, name, world, goal, parent) { return { id, kind, name, world, goal, parent, task: "demo", started: Date.now() / 1000, status: "running", step: 0, current: "thinking", notes_pending: 0 }; }
 function dEmit(kind, world, data) { addEvents([{ id: lastId + 1, ts: Date.now() / 1000, kind, world, task: "demo", data }]); }
@@ -1826,25 +1993,25 @@ const DEMO_STEPS = [
   [3, () => dTool("rb", "recall", { query: "comet orbit integration" })],
   [5, () => { dTool("rb", "deliberate"); dEmit("deliberation", null, { mode: "adversarial", problem: "Plan for the comet flyby", result: "", run: "rb" }); }],
   [8, () => { if (demo.stopped.has("rb")) return; dTool("rb", "create_agent"); const spec = { name: "comet-tracker", purpose: "Tracks small bodies and integrates their orbits", tools: ["run_python", "render_svg", "recall"] }; orrery().agents.push(spec); dEmit("agent_created", "orrery", spec); renderState(); }],
-  [13, () => { if (demo.stopped.has("rb")) return; dTool("rb", "dispatch"); dStart(dRun("rs", "steward", "Orrery steward", "orrery", "Model the C/2026 flyby with the comet tracker", "rb")); }],
-  [15.5, () => { if (demo.stopped.has("rs")) return; dTool("rs", "spawn_agents"); dStart(dRun("rc", "specialist", "comet-tracker", "orrery", "Integrate C/2026 for 400 days and render the flyby", "rs")); }],
-  [17.5, () => dTool("rc", "run_python")],
-  [19, () => dTool("rb", "home__set_light", { room: "lab", on: true })],
-  [20.5, () => dTool("rc", "web_search", { query: "C/2026 orbital elements" })],
-  [22.5, () => dTool("rc", "render_svg")],
-  [25, () => { if (!demo.stopped.has("rc")) { dEnd("rc"); dEmit("lesson", "orrery", { topic: "orbital-mechanics", kind: "lesson", content: "Verlet holds energy drift under 1e-7 for hyperbolic flybys.", run: "rs" }); } }],
-  [27, () => { if (!demo.stopped.has("rs")) dEnd("rs"); }],
-  [28.5, () => dEmit("alert", "ledger", { watch: "Ledger imports", kind: "file", message: "imports/*.csv changed.", severity: "info" })],
-  [31, () => { if (demo.stopped.has("rb")) return; dEmit("thought", null, { text: "The flyby is modelled. The tracker's job is done; decommissioning it.", run: "rb" }); }],
-  [32.5, () => { const o = orrery(); if (o.agents.some(a => a.name === "comet-tracker")) { o.agents = o.agents.filter(a => a.name !== "comet-tracker"); dEmit("agent_deleted", "orrery", { name: "comet-tracker" }); renderState(); } }],
-  [38, () => { if (!demo.stopped.has("rb")) { dEnd("rb"); dEmit("journal", null, { entry: "Built a tracker for one job, then retired it. Clean." }); } }],
-  [42, () => { demo.t = 0; demo.step = 0; }],
+  [14, () => { if (demo.stopped.has("rb")) return; dTool("rb", "dispatch"); dStart(dRun("rs", "steward", "Orrery steward", "orrery", "Model the C/2026 flyby with the comet tracker", "rb")); }],
+  [16.5, () => { if (demo.stopped.has("rs")) return; dTool("rs", "spawn_agents"); dStart(dRun("rc", "specialist", "comet-tracker", "orrery", "Integrate C/2026 for 400 days and render the flyby", "rs")); }],
+  [18.5, () => dTool("rc", "run_python")],
+  [20, () => dTool("rb", "home__set_light", { room: "lab", on: true })],
+  [21.5, () => dTool("rc", "web_search", { query: "C/2026 orbital elements" })],
+  [23.5, () => dTool("rc", "render_svg")],
+  [26, () => { if (!demo.stopped.has("rc")) { dEnd("rc"); dEmit("lesson", "orrery", { topic: "orbital-mechanics", kind: "lesson", content: "Verlet holds energy drift under 1e-7 for hyperbolic flybys.", run: "rs" }); } }],
+  [28, () => { if (!demo.stopped.has("rs")) dEnd("rs"); }],
+  [29.5, () => dEmit("alert", "ledger", { watch: "Ledger imports", kind: "file", message: "imports/*.csv changed.", severity: "info" })],
+  [32, () => { if (demo.stopped.has("rb")) return; dEmit("thought", null, { text: "The flyby is modelled. The tracker's job is done; decommissioning it.", run: "rb" }); }],
+  [33.5, () => { const o = orrery(); if (o.agents.some(a => a.name === "comet-tracker")) { o.agents = o.agents.filter(a => a.name !== "comet-tracker"); dEmit("agent_deleted", "orrery", { name: "comet-tracker" }); renderState(); } }],
+  [40, () => { if (!demo.stopped.has("rb")) { dEnd("rb"); dEmit("journal", null, { entry: "Built a tracker for one job, then retired it. Clean." }); } }],
+  [44, () => { demo.t = 0; demo.step = 0; }],
 ];
 function startOverworldDemo() {
-  state.runs = []; state.agent_tools = null;
+  state.runs = []; evalReport = DEMO_EVAL;
   setInterval(() => {
     const now = T(), dt = demo.last ? now - demo.last : 0; demo.last = now;
-    if ((state.runs || []).some(r => r.status === "paused")) return;   // the example clock waits while you have something paused
+    if ((state.runs || []).some(r => r.status === "paused")) return;
     demo.t += dt;
     while (demo.step < DEMO_STEPS.length && DEMO_STEPS[demo.step][0] <= demo.t) DEMO_STEPS[demo.step++][1]();
   }, 100);
@@ -1855,25 +2022,30 @@ function demoControl(action, run, body) {
   if (action === "pause") for (const id of tree(r.id)) { const x = state.runs.find(y => y.id === id); if (x && x.status === "running") { x.status = "paused"; dEmit("run_paused", x.world, { ...x }); } }
   if (action === "resume") for (const id of tree(r.id)) { const x = state.runs.find(y => y.id === id); if (x && x.status === "paused") { x.status = "running"; dEmit("run_resumed", x.world, { ...x }); } }
   if (action === "stop") for (const id of tree(r.id).reverse()) { demo.stopped.add(id); dEnd(id, "cancelled"); }
-  if (action === "note") {
-    dEmit("run_note", r.world, { ...r, note: body.text });
-    setTimeout(() => dEmit("thought", r.world, { text: `Understood. Adjusting: ${body.text}`, run: r.id, ...(r.kind === "specialist" ? { agent: r.name } : {}) }), 1500);
-  }
+  if (action === "note") { dEmit("run_note", r.world, { ...r, note: body.text }); setTimeout(() => dEmit("thought", r.world, { text: `Understood. Adjusting: ${body.text}`, run: r.id, ...(r.kind === "specialist" ? { agent: r.name } : {}) }), 1500); }
   renderState(); return Promise.resolve(true);
 }
 function demoCreate(body) {
-  if (!body.name) { owToast("Give the specialist a name.", true); return; }
-  const name = body.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"), spec = { name, purpose: body.purpose || "(example)", tools: body.tools };
+  if (!body.name) { owToast("Give the specialist a name.", true); return null; }
+  const name = body.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"), spec = { name, purpose: body.purpose || "(example)", tools: body.tools, model: genModel(name, body.purpose || "") };
   if (body.world) owWorlds().find(w => w.slug === body.world).agents.push(spec); else (state.core_agents ||= []).push(spec);
-  dEmit("agent_created", body.world, spec); renderState(); owToast(`Brainiac is building ${name}. (Example only.)`);
+  dEmit("agent_created", body.world, spec); renderState(); owToast(`Brainiac is building ${name}. (Example only.)`); return {};
 }
 function demoDelete(world, name) {
-  if (world) { const w = owWorlds().find(x => x.slug === world); w.agents = w.agents.filter(a => a.name !== name); }
-  else state.core_agents = state.core_agents.filter(a => a.name !== name);
+  if (world) { const w = owWorlds().find(x => x.slug === world); w.agents = w.agents.filter(a => a.name !== name); } else state.core_agents = state.core_agents.filter(a => a.name !== name);
   for (const r of state.runs.filter(x => x.kind === "specialist" && x.name === name && x.world === world)) demoControl("stop", r);
-  dEmit("agent_deleted", world, { name }); renderState(); owToast(`Brainiac is decommissioning ${name}. (Example only.)`);
+  dEmit("agent_deleted", world, { name }); renderState(); owToast(`Brainiac is decommissioning ${name}. (Example only.)`); return {};
+}
+function demoWorld(name, charter) {
+  if (!name || !charter) { owToast("A world needs a name and a charter.", true); return null; }
+  const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  if (owWorlds().some(w => w.slug === slug)) { owToast("That world already exists.", true); return null; }
+  const w = { slug, name, charter, laws: [], tasks: 0, files: 0, agents: [], memory: { total: 0, kinds: {}, topics: 0 } };
+  state.worlds.push(w); dEmit("world_created", slug, w); renderState(); owToast(`${name} sealed. (Example only.)`); return w;
 }
 requestAnimationFrame(owFrame);
+let evalReport = null;
+setInterval(loadEvals, 15000); setTimeout(loadEvals, 800);
 
 let booted = false;
 connect().then(() => { booted = true; requestAnimationFrame(drawBottles); });

@@ -258,7 +258,7 @@ class ConsoleTests(Base):
         try:
             page = get("/")
             self.assertTrue(page.startswith("<!doctype html>"))
-            self.assertIn("<title>Brainiac Command Console</title>", page)
+            self.assertIn("<title>Aureus Command</title>", page)
             self.assertEqual(post("/api/worlds", {"name": "Orrery", "charter": "Stars"})["slug"], "orrery")
             state = json.loads(get("/api/state"))
             self.assertTrue(state["live"])

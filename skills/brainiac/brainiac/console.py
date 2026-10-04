@@ -24,6 +24,11 @@ API
   POST /api/runs/<action>       pause | resume | stop | note — {"id": "<run id>", "text": "…" (note only)}
   POST /api/agents/create       {"name", "purpose", "system_prompt", "tools": [...], "world": slug | null}
   POST /api/agents/delete       {"name", "world": slug | null}
+  POST /api/teach               {"topic", "text"}: add material to the Collection
+  POST /api/settings            {"autonomous": bool, "web": bool}
+  GET  /api/session?id=console  the conversation so far (summary and recent turns)
+  GET  /api/evals               the latest Jarvis-readiness scorecard (or the free structural one)
+  POST /api/evals/run           {"tiers": [1], "confirm": true}: run protocols live in the background (uses the API)
   POST /api/key                 {"key": "sk-ant-…"}: verify and store in the Keychain (never returned)
   POST /api/shutdown            stop Brainiac (the app's Quit)
   GET  /api/health              {"app": "brainiac"}: lets a second launch find the running one
@@ -60,7 +65,7 @@ SKELETON = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '</head><body>{page}</body></html>')
 
 MANIFEST = {
-    "name": "Brainiac", "short_name": "Brainiac", "description": "Command console for Brainiac.",
+    "name": "Aureus Command", "short_name": "Aureus", "description": "Aureus Command: Brainiac's station.",
     "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#0b0914", "theme_color": "#0b0914",
     "icons": [{"src": f"/icon-{n}.png", "sizes": f"{n}x{n}", "type": "image/png", "purpose": "any"} for n in (192, 512)],
 }
@@ -122,6 +127,16 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
     html = page_html().encode("utf-8")
     allowed_hosts = set()
     holder: dict = {}
+    evals_dir = brainiac.config.home / "evals"
+    eval_lock = threading.Lock()
+
+    def latest_eval() -> dict:
+        from .evals.runner import gap_report
+
+        runs = sorted(evals_dir.glob("run-*.json")) if evals_dir.exists() else []
+        if runs:
+            return {**json.loads(runs[-1].read_text(encoding="utf-8")), "running": eval_lock.locked()}
+        return {**gap_report(brainiac.client), "running": eval_lock.locked()}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # keep the terminal quiet
@@ -200,6 +215,10 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 after = int(q.get("after", "0") or 0)
                 events = brainiac.chronicle.since(after) if after else brainiac.chronicle.recent(200)
                 self._json({"events": events})
+            elif url.path == "/api/session":
+                self._json(brainiac.sessions.load(q.get("id", "console")))
+            elif url.path == "/api/evals":
+                self._json(latest_eval())
             elif url.path == "/api/recall":
                 store = brainiac.bottles.memory(q["world"]) if q.get("world") else brainiac.memory
                 found = store.recall(q.get("q", ""), k=12)
@@ -263,6 +282,47 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 from .runtime import demo_home_command
 
                 self._json(brainiac.connect("home", command=demo_home_command()))
+            elif url.path == "/api/teach":
+                topic, text = (body.get("topic") or "").strip(), (body.get("text") or "").strip()
+                if not topic or not text:
+                    return self._json({"error": "Teaching needs a topic and some text."}, 400)
+                n = brainiac.memory.teach(text, topic)
+                brainiac.chronicle.emit("taught", {"topic": topic, "entries": n})
+                self._json({"ok": True, "entries": n})
+            elif url.path == "/api/settings":
+                changed = {}
+                for k in ("autonomous", "web"):
+                    if k in body:
+                        setattr(brainiac.config, k, bool(body[k]))
+                        changed[k] = bool(body[k])
+                brainiac.chronicle.emit("settings", changed)
+                self._json({"ok": True, **changed})
+            elif url.path == "/api/evals/run":
+                if not body.get("confirm"):
+                    return self._json({"error": "Live evaluations use the API. Send confirm: true to run."}, 400)
+                if not eval_lock.acquire(blocking=False):
+                    return self._json({"error": "An evaluation is already running."}, 409)
+                from .evals.protocols import PROTOCOLS
+
+                tiers = {int(t) for t in body.get("tiers") or [1, 2, 3]}
+                ids = [p.id for p in PROTOCOLS if p.tier in tiers]
+
+                def evaluate():
+                    from .evals.runner import run_suite, save
+
+                    try:
+                        brainiac.chronicle.emit("eval_start", {"tiers": sorted(tiers), "protocols": len(ids)})
+                        report = run_suite(brainiac.client, ids, progress=lambda line: brainiac.chronicle.emit(
+                            "eval_progress", {"line": line.strip()}))
+                        save(report, evals_dir)
+                        brainiac.chronicle.emit("eval_end", {"ok": True, "readiness": report["summary"]["readiness"]})
+                    except Exception as exc:
+                        brainiac.chronicle.emit("eval_end", {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+                    finally:
+                        eval_lock.release()
+
+                threading.Thread(target=evaluate, daemon=True).start()
+                self._json({"ok": True, "protocols": len(ids)})
             elif url.path.startswith("/api/runs/"):
                 action, rid = url.path.rsplit("/", 1)[-1], body.get("id", "")
                 if action == "pause":

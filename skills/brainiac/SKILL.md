@@ -47,6 +47,12 @@ that raise alerts, speaks and listens in the console, and acts on systems the op
 MCP servers (`python -m brainiac connect`; a demo smart-home is included). Only the operator can
 connect a system.
 
+## Aureus Command
+
+The console (`python -m brainiac app`) is Aureus Command. It's an open landscape centred on Brainiac's
+citadel, with world districts, the Archive, Dock, Watchtower, Barracks and Proving Ground. Every agent
+is drawn with its own rendered model, and every capability is reachable from the map.
+
 ## Bottled worlds
 
 When the operator wants a separate environment or project, create a world for it. Give it a name,

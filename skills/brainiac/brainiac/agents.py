@@ -194,6 +194,10 @@ def write_agent(workspace: Path, memory_path: Path, name: str, purpose: str, sys
             "workspace": str(workspace), "memory": str(memory_path)}
     (folder / "spec.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
     (folder / "agent.py").write_text(AGENT_TEMPLATE.format(purpose=purpose.replace('"""', "'''")), encoding="utf-8")
+    if not (folder / "model.json").exists():  # its own rendered body (kept if the agent is rewritten)
+        from . import models
+
+        models.save(folder, models.generate(spec["name"], purpose))
     return folder
 
 
@@ -210,7 +214,10 @@ def list_agents(workspace: Path) -> list[dict]:
     for p in sorted(root.glob("*/spec.json")) if root.exists() else []:
         try:
             s = json.loads(p.read_text(encoding="utf-8"))
-            out.append({k: s.get(k) for k in ("name", "purpose", "tools")})
         except (OSError, json.JSONDecodeError):
             continue
+        from . import models
+
+        out.append({**{k: s.get(k) for k in ("name", "purpose", "tools")},
+                    "model": models.load(p.parent, s.get("name", ""), s.get("purpose", ""))})
     return out

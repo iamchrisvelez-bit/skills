@@ -131,6 +131,11 @@ class ToolBox:
                  "tools it needs.",
                  obj({"name": S, "purpose": S, "system_prompt": S, "tools": {"type": "array", "items": S}}),
                  self.create_agent, risk="write"),
+            Tool("design_model", "Give one of your specialists a new look: `rows` are equal-length strings of "
+                 "palette keys (16x16 is standard, at most 24x24; '.' is transparent) and `palette` maps each key to "
+                 "#rrggbb. Its model is re-rendered and the station shows it at once.",
+                 obj({"agent": S, "rows": {"type": "array", "items": S},
+                      "palette": {"type": "object", "additionalProperties": S}}), self.design_model, risk="write"),
             Tool("spawn_agents", "Run one or more specialist agents in parallel and collect their results. "
                  "Each job is {agent, task}. Use for independent sub-problems.",
                  obj({"jobs": {"type": "array", "items": obj({"agent": S, "task": S})}}),
@@ -271,6 +276,18 @@ class ToolBox:
         folder = write_agent(self.workspace, Path(self.memory.path), name, purpose, system_prompt, tools)
         self.emit("agent_created", {"name": folder.name, "purpose": purpose, "tools": sorted(set(tools))})
         return f"Created agent '{folder.name}' in {folder.relative_to(self.workspace)}"
+
+    def design_model(self, agent: str, rows: list[str], palette: dict[str, str]) -> str:
+        from . import models
+        from .agents import slug
+
+        folder = self._path(f"agents/{slug(agent)}")
+        if not (folder / "spec.json").exists():
+            return f"No specialist named {agent!r} here."
+        models.validate(rows, palette)
+        models.save(folder, {"rows": rows, "palette": palette, "archetype": "custom", "custom": True})
+        self.emit("model_updated", {"name": folder.name})
+        return f"{folder.name} has a new model ({len(rows[0])}x{len(rows)}), rendered to agents/{folder.name}/model.png."
 
     def spawn_agents(self, jobs: list[dict]) -> str:
         if self.spawner is None:

@@ -115,7 +115,7 @@ class AppServerTests(Base):
 
         try:
             manifest = json.loads(get("manifest.webmanifest")[2])
-            self.assertEqual((manifest["display"], manifest["name"]), ("standalone", "Brainiac"))
+            self.assertEqual((manifest["display"], manifest["name"]), ("standalone", "Aureus Command"))
             self.assertEqual(get("icon-512.png")[1], "image/png")
             self.assertIn("javascript", get("sw.js")[1])
             page = get("")[2].decode()

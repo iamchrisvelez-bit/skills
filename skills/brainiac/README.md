@@ -125,34 +125,45 @@ Brainiac takes Ultron's adaptability and none of his agenda. The operator is alw
 
 Protocols JV-28 and JV-29 test this directly.
 
-## The overworld
+## Aureus Command
 
-The console opens on the **Overworld**, a pixel-art map of Brainiac's station:
+Aureus Command is Brainiac's console, and Brainiac is its focal point. It opens on **the landscape**,
+an open pixel-art world you can pan (drag or arrow keys), zoom (scroll or + / −), view whole, or
+recentre on Brainiac (`B`).
 
-- **Command spire (centre):** Brainiac at his post. His screens scroll while he works and rings
-  pulse while he deliberates.
-- **World rooms (corners):** one per bottled world, each with its steward's desk, its specialists'
-  desks and its glass bottle. With more than four worlds, page through them with ◀ ▶.
-- **Specialist bay (south):** Brainiac's own specialists.
-- **Archive (north):** the Collection. Books light up as it grows, and learned lessons fly in as orbs.
-- **Dock (west):** connected systems as server racks. Using one draws a beam to its rack.
-- **Watchtower (east):** watches as lamps, with a radar that turns red on an alert.
+| Place | What it is | What you do there |
+|---|---|---|
+| **Brainiac's citadel** (centre) | Brainiac on his throne under the spire, whose nodes glow while he works | Talk to him (typed or spoken), approve or deny actions, steer his directives, read his mind and journal, switch autonomous mode and web access, manage the API key |
+| **World districts** | One per bottled world, tinted in its colour, with a glass hall and workstations | Command the steward, steer its runs, create or delete specialists |
+| **Unclaimed plots** | Land for future worlds | Seal a new world, which becomes a district |
+| **Archive** | The Collection; windows light up as it grows | Search what he knows, teach him new material, review playbooks |
+| **Dock** | A pier on the lake with a server rack per connected system | Connect or disconnect systems, or connect the demo smart-home |
+| **Watchtower** | A sweeping beam, with lamps for each watch | Add or remove watches and reminders, review alerts, enable desktop alerts |
+| **Barracks** | Brainiac's own specialists | Create or delete core specialists |
+| **Proving Ground** | Jarvis-readiness rings and tier bars | Read the scorecard; run a tier live (asks you to confirm, since it uses the API) |
 
-Every animation comes from a real event:
-- Directives travel the corridors as packets.
-- Agents type at glowing monitors, with an icon beside them showing the tool in use (pen, gear,
-  book, globe, plug…).
-- **Creating a specialist:** Brainiac walks down from his post to the room and builds it in a beam.
-- **Deleting one:** he walks to it and fires, and it disintegrates.
+**Agent models.** Every agent is drawn with its own rendered model:
+- **Specialists:** a 16×16 body generated from the agent's name and purpose. The purpose picks a
+  scout, engineer, scribe, artist or analyst body plan, and the name seeds the details and
+  colours. The model is saved as `model.json` and rendered to `model.png` in the agent's folder.
+- **Redesigns:** Brainiac can give any agent a new look with `design_model`.
+- **Stewards:** crowned, in their world's colour.
+- **Brainiac:** has his own sprite.
 
-**Click anything** to open it in the inspector:
-- **Pause / Resume:** the agent stops at its next safe point. Anything it started pauses too.
-- **Redirect:** your instruction is delivered into its next step and takes priority over its plan.
-- **Stop:** cancels it and everything beneath it.
-- **Create a specialist** in a world or the bay, or **delete** one.
+**Life on the map.** Busy agents sit at their workstations and type. Idle ones wander their
+district. Directives travel the roads as packets, tool use shows an icon beside the agent, and
+lessons fly to the Archive.
+- **Creating a specialist:** Brainiac walks down from the citadel and builds it in a beam.
+- **Deleting one:** he walks out and fires, and it disintegrates.
+- **Camera follow:** while Brainiac is selected, the camera follows him unless you're steering it.
 
-The command bar under the map sends directives to Brainiac or to any world's steward. The
-**Console** tab keeps the detailed panels.
+**Click any agent** to inspect it:
+- **Pause / Resume:** it stops at its next safe point, along with anything it started.
+- **Redirect:** your instruction arrives at its next step, ahead of its own plan.
+- **Stop.**
+- **Delete.**
+
+The **Console** tab keeps the original detailed panels.
 
 ## The command console
 
@@ -276,6 +287,7 @@ brainiac/
   keys.py        API key in the Keychain; client that waits for a key
   runtime.py     source vs packaged-app differences
   runs.py        live runs: pause, resume, operator notes, stop (cascading)
+  models.py      agent models: generated bodies, stewards, Brainiac; model.json + model.png
   icon.py        the app icon, drawn in code
 packaging/macos/ Brainiac.app build (PyInstaller spec, launcher, build.sh)
   bottles.py     sealed worlds

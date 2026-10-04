@@ -26,6 +26,7 @@ from .cognition import MODES, Cognition
 from .config import Config
 from .memory import MemoryStore
 from .integrations import Integrations
+from . import models
 from .mind import Mind
 from .runs import Run, Runs
 from .sessions import Profile, Sessions
@@ -667,6 +668,8 @@ class Brainiac:
             "playbooks": playbooks,
             "watches": self.watches.list(),
             "runs": self.runs.list(),
+            "models": {"brainiac": models.brainiac(),
+                       "stewards": {w.slug: models.steward(w.name, models.world_colour(w.slug)) for w in self.bottles.list()}},
             "integrations": self.integrations.status(),
             "web": self.config.web,
             "tools": list(BASE_TOOLS) + ["create_agent", "spawn_agents", "create_world", "list_worlds", "inspect_world",
