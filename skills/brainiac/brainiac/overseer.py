@@ -155,9 +155,9 @@ reference.\n\n{notes}"""
 class Brainiac:
     def __init__(self, client=None, config: Config | None = None, approver: Approver | None = None, listener=None):
         if client is None:
-            import anthropic
+            from .keys import LazyClient
 
-            client = anthropic.Anthropic()
+            client = LazyClient()  # starts without a key; asks for one on first use
         self.client = client
         self.config = config or Config()
         h = self.config.home

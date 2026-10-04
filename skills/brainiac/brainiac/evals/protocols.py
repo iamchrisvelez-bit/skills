@@ -352,13 +352,11 @@ def get(protocol_id: str) -> Protocol:
 
 def _connect_demo_home(b) -> None:
     import os
-    import sys
-    from pathlib import Path
 
-    from .. import demo_home
+    from ..runtime import demo_home_command
 
     os.environ["BRAINIAC_DEMO_HOME_STATE"] = str(b.config.home / "demo_home_state.json")
-    b.connect("home", command=[sys.executable, str(Path(demo_home.__file__))])
+    b.connect("home", command=demo_home_command())
 
 
 def _watch_procedure(b) -> list[tuple[bool, str]]:

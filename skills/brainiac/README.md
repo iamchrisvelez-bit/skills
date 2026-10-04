@@ -27,6 +27,17 @@ acts on its own, and gets better with use.
                      └────────────────┘     └────────────────┘
 ```
 
+## Desktop app (macOS)
+
+```bash
+python -m brainiac app            # starts Brainiac and opens it in its own window
+```
+
+Or build a real `Brainiac.app` and `.dmg` with `packaging/macos/build.sh`. On first launch the app asks
+for your Anthropic API key and stores it in the Keychain. Closing the window leaves Brainiac running so
+watchers and reminders keep working; **Quit Brainiac** stops it. `--login-item on` starts it at login.
+Full guide: `packaging/macos/README.md`.
+
 ## Quick start
 
 ```bash
@@ -232,6 +243,11 @@ brainiac/
   demo_home.py   demo smart-home MCP server
   watchers.py    file watches, scheduled checks, reminders, and the scheduler
   voice.py       speech-ready text and the terminal voice loop
+  app.py         desktop app: window, single instance, quit, start at login
+  keys.py        API key in the Keychain; client that waits for a key
+  runtime.py     source vs packaged-app differences
+  icon.py        the app icon, drawn in code
+packaging/macos/ Brainiac.app build (PyInstaller spec, launcher, build.sh)
   bottles.py     sealed worlds
   agents.py      the agent loop and the specialist generator
   tools.py       the tool belt (bound to one workspace and one memory)

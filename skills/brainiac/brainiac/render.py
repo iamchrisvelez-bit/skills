@@ -159,6 +159,14 @@ def _hex(c: str) -> tuple[int, int, int, int]:
 
 def render_pixel_art(rows: list[str], palette: dict[str, str], dest: Path, scale: int = 8) -> Path:
     """Render a sprite given as rows of palette keys. '.' or ' ' is transparent."""
+    dest = dest.with_suffix(".png")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(pixel_png(rows, palette, scale))
+    return dest
+
+
+def pixel_png(rows: list[str], palette: dict[str, str], scale: int = 8, pad: int = 0) -> bytes:
+    """PNG bytes for a sprite given as rows of palette keys, with `pad` transparent pixels around it."""
     if not rows:
         raise ValueError("rows must not be empty")
     width = max(len(r) for r in rows)
@@ -173,23 +181,22 @@ def render_pixel_art(rows: list[str], palette: dict[str, str], dest: Path, scale
             if px is None:
                 raise ValueError(f"palette has no colour for {ch!r}")
             line += bytes(px) * scale
+        line = bytes(clear) * pad + line + bytes(clear) * pad
         for _ in range(scale):
             raw += b"\x00" + line
-    w, h = width * scale, len(rows) * scale
+    w, h = width * scale + 2 * pad, len(rows) * scale + 2 * pad
+    blank = b"\x00" + bytes(clear) * w
+    raw = bytearray(blank * pad) + raw + bytearray(blank * pad)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-    png = (
+    return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
         + chunk(b"IEND", b"")
     )
-    dest = dest.with_suffix(".png")
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(png)
-    return dest
 
 
 def render_svg(svg: str, dest: Path) -> Path:

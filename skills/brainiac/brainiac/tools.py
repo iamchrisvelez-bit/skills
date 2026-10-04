@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Callable
 
 from . import render
 from .memory import MemoryStore
+from .runtime import python_command
 
 if TYPE_CHECKING:
     from .config import Config
@@ -241,7 +242,7 @@ class ToolBox:
         script.write_text(code, encoding="utf-8")
         try:
             proc = subprocess.run(
-                [sys.executable, str(script)], cwd=self.workspace, capture_output=True,
+                python_command(script), cwd=self.workspace, capture_output=True,
                 text=True, timeout=max(1, min(timeout, 600)),
             )
         except subprocess.TimeoutExpired:

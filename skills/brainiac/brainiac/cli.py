@@ -49,6 +49,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--world", help="send the directive straight to this world's steward")
     c = sub.add_parser("chat", help="interactive session; each message is a directive")
     c.add_argument("--world")
+    ap = sub.add_parser("app", help="run Brainiac as a desktop app (starts it and opens its window)")
+    ap.add_argument("--port", type=int, default=7979)
+    ap.add_argument("--no-window", action="store_true", help="run in the background without opening a window")
+    ap.add_argument("--stop", action="store_true", help="quit a running Brainiac")
+    ap.add_argument("--login-item", choices=["on", "off"], help="start Brainiac when you log in (macOS)")
+    ky = sub.add_parser("key", help="manage the Anthropic API key (stored in the macOS Keychain)")
+    ky.add_argument("action", choices=["set", "status", "delete"])
     con = sub.add_parser("console", help="open the web command console")
     con.add_argument("--port", type=int, default=7979)
     w = sub.add_parser("world", help="create or inspect bottled worlds")
@@ -99,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--prefer", action="append", default=[], help="add a preference (repeatable)")
     a = p.parse_args(argv)
 
+    if a.cmd == "app" and not a.home:
+        from .runtime import app_home
+
+        a.home = app_home()  # ~/Library/Application Support/Brainiac on macOS
     config = Config(home=a.home) if a.home else Config()
     if a.autonomous:
         config.autonomous = True
@@ -108,6 +119,39 @@ def main(argv: list[str] | None = None) -> int:
     bottles = Bottles(config.bottles)
     store = lambda world: bottles.memory(bottles.get(world).slug) if world else MemoryStore(config.memory_path)
 
+    if a.cmd == "app":
+        from . import app as desktop
+
+        if a.stop:
+            print("Brainiac has been asked to quit." if desktop.stop(a.port) else f"No Brainiac is running on port {a.port}.")
+            return 0
+        if a.login_item:
+            print(desktop.login_item(a.login_item == "on", config.home, a.port))
+            return 0
+        return desktop.run(config, a.port, window=not a.no_window)
+    if a.cmd == "key":
+        from . import keys
+
+        if a.action == "status":
+            st = keys.status()
+            print(f"Key configured ({st['source']})." if st["configured"] else "No key set. Run: brainiac key set")
+        elif a.action == "delete":
+            print("Key removed." if keys.delete_key() else "No stored key found.")
+        else:
+            import getpass
+
+            key = getpass.getpass("Anthropic API key (input hidden): ").strip()
+            try:
+                if not keys.KEY_SHAPE.match(key):
+                    raise ValueError("That does not look like an Anthropic API key (they start with sk-ant-).")
+                ok, message = keys.verify(key)
+                if not ok:
+                    raise ValueError(message)
+                print(f"{message} Stored in: {keys.set_key(key)}.")
+            except (ValueError, RuntimeError) as exc:
+                print(f"{RED}{exc}{RESET}")
+                return 2
+        return 0
     if a.cmd == "teach":
         n = store(a.world).teach_path(a.path, a.topic)
         print(f"Catalogued {n} new entries from {a.path}")
@@ -164,9 +208,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{GREEN}Registered {a.name}.{RESET} " + ("Trusted: attached on every directive." if a.trusted else
                       "Attached only in autonomous mode (or re-add with --trusted)."))
             elif a.ccmd == "demo":
-                from . import demo_home
+                from .runtime import demo_home_command
 
-                integ.add("home", command=[sys.executable, str(Path(demo_home.__file__))])
+                integ.add("home", command=demo_home_command())
                 print(f"{GREEN}Demo smart-home connected.{RESET} Try: brainiac run \"Turn the lab lights on\"")
             elif a.ccmd == "remove":
                 print("Disconnected." if integ.remove(a.name) else f"No connection named {a.name}.")

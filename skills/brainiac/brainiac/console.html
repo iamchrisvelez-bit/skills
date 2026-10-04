@@ -175,6 +175,16 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
 .ev.journal .text::before { content: "Journal · "; font-style: normal; color: var(--coluan); font-weight: 500; }
 .ev.deliberation details summary { cursor: pointer; }
 .ev.deliberation pre { margin: 6px 0 0; padding: 8px; background: var(--void); border-radius: 3px; white-space: pre-wrap; font: 12px/1.5 var(--body); color: var(--text); max-height: 280px; overflow: auto; }
+/* ---------- app: key setup, quit */
+.overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px;
+  background: color-mix(in srgb, var(--void) 82%, transparent); backdrop-filter: blur(3px); }
+.setup { width: min(460px, 100%); display: grid; gap: 14px; padding: 22px; }
+.setup h2 { font: 400 15px/1.3 var(--display); letter-spacing: .1em; text-transform: none; color: var(--text); margin: 0; }
+.setup p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.setup .row-actions { justify-content: flex-end; }
+.chip.btnchip { cursor: pointer; }
+.chip.missing b { color: var(--alert); }
+
 /* ---------- voice, alerts, reach */
 .voice { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .mic { display: inline-flex; align-items: center; gap: 8px; }
@@ -208,7 +218,22 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
       <div><h1>BRAINIAC</h1><p>Twelfth-level intellect · Overseer</p></div>
     </div>
     <div class="chips" id="chips"></div>
+    <button class="btn small" type="button" id="quitBtn" hidden>Quit Brainiac</button>
   </header>
+  <div class="overlay" id="keyOverlay" hidden>
+    <form class="panel setup" id="keyForm" aria-labelledby="keyTitle">
+      <h2 id="keyTitle">Connect Brainiac to Claude</h2>
+      <p>Brainiac thinks with Claude, so it needs an Anthropic API key. Create one at
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--coluan)">console.anthropic.com</a>
+        and paste it here. It is stored in <span id="keyStore">your Mac's Keychain</span>, not in Brainiac's files, and the console never shows it again.</p>
+      <label for="apiKey">API key<input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" required></label>
+      <p class="form-msg" id="keyMsg" role="status"></p>
+      <div class="row-actions">
+        <button class="btn" type="button" id="keyLater">Later</button>
+        <button class="btn primary" type="submit" id="keySave">Save key</button>
+      </div>
+    </form>
+  </div>
   <p class="demo-note" id="demoNote" hidden>Showing example data. To command your own Brainiac, run <code>python -m brainiac console</code> and open the address it prints.</p>
 
   <main class="bridge">
@@ -481,6 +506,16 @@ function renderState() {
   chip("Mode", s.autonomous ? "Autonomous" : "Supervised");
   chip("Worlds", String(s.worlds.length));
   chip("Collection", String(s.collection.total));
+  if (LIVE && s.key) {
+    chip("Key", s.key.configured ? "Set" : "Missing", s.key.configured ? "btnchip" : "btnchip missing");
+    chips.lastChild.title = s.key.configured ? `Stored in: ${s.key.source}. Click to replace.` : "Click to add your Anthropic API key.";
+    chips.lastChild.onclick = () => showKey(true);
+    chips.lastChild.tabIndex = 0; chips.lastChild.setAttribute("role", "button");
+    chips.lastChild.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showKey(true); } };
+    if (s.key.store) $("keyStore").textContent = s.key.store;
+    if (!s.key.configured && !keyPrompted) { keyPrompted = true; showKey(true); }
+  }
+  $("quitBtn").hidden = !LIVE;
   $("sigil").classList.toggle("busy", s.active.length > 0);
 
   // worlds
@@ -754,6 +789,7 @@ function addEvents(list) {
   if (booted) for (const e of fresh) {
     if (e.kind === "alert") notifyAlert(e);
     if (e.kind === "task_end" && myTasks.has(e.task) && e.data.ok && $("speakReplies").checked) say(e.data.result);
+    if (e.kind === "task_end" && !e.data.ok && /MissingKey/.test(e.data.error || "")) showKey(true);
   }
   renderAlerts();
   if (events.length > 1500) events = events.slice(-1500);
@@ -942,6 +978,27 @@ function drawBottles(t) {
   }
   if (!reduceMotion) requestAnimationFrame(drawBottles);
 }
+/* ------------------------------------------------------------ app shell */
+let keyPrompted = false;
+function showKey(open) { $("keyOverlay").hidden = !open; if (open) { $("keyMsg").textContent = ""; setTimeout(() => $("apiKey").focus(), 30); } }
+$("keyLater").addEventListener("click", () => showKey(false));
+$("keyOverlay").addEventListener("keydown", e => { if (e.key === "Escape") showKey(false); });
+$("keyForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const msg = $("keyMsg"); $("keySave").disabled = true; msg.className = "form-msg"; msg.textContent = "Checking the key with Anthropic…";
+  try {
+    const r = await api("/api/key", { key: $("apiKey").value.trim() });
+    $("apiKey").value = ""; msg.className = "form-msg ok"; msg.textContent = r.message;
+    pollState(); setTimeout(() => showKey(false), 900);
+  } catch (e) { msg.className = "form-msg err"; msg.textContent = e.message; }
+  finally { $("keySave").disabled = false; }
+});
+$("quitBtn").addEventListener("click", async () => {
+  $("quitBtn").disabled = true;
+  try { await api("/api/shutdown", {}); } catch {}
+  document.querySelector(".app").replaceChildren(el("p", "empty", "Brainiac has stopped. Watches and reminders are paused until you open Brainiac again. You can close this window."));
+});
+
 let booted = false;
 connect().then(() => { booted = true; requestAnimationFrame(drawBottles); });
 

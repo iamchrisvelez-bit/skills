@@ -21,6 +21,12 @@ API
   POST /api/integrations        {"name", "command": "program args…"} or {"name", "url", "token", "trusted"}
   POST /api/integrations/remove {"name"}
   POST /api/integrations/demo   connect the demo smart-home
+  POST /api/key                 {"key": "sk-ant-…"}: verify and store in the Keychain (never returned)
+  POST /api/shutdown            stop Brainiac (the app's Quit)
+  GET  /api/health              {"app": "brainiac"}: lets a second launch find the running one
+
+App install: /manifest.webmanifest, /icon-<size>.png and /sw.js make the console installable as a
+standalone app window in Chrome, Edge or Brave.
 
 Requests are accepted only for a localhost Host header (against DNS rebinding),
 and POSTs only as same-origin JSON (against cross-site requests from other pages).
@@ -30,10 +36,8 @@ from __future__ import annotations
 
 import json
 import shlex
-import sys
 import threading
 import uuid
-from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from urllib.parse import parse_qs, urlparse
@@ -44,8 +48,23 @@ APPROVAL_TIMEOUT = 600  # seconds before an unanswered approval counts as "no"
 
 SKELETON = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            '<meta name="theme-color" content="#0b0914">'
+            '<link rel="manifest" href="/manifest.webmanifest">'
+            '<link rel="icon" type="image/png" href="/icon-64.png">'
+            '<link rel="apple-touch-icon" href="/icon-192.png">'
             '<style>html,body{height:100%}body{margin:0}[hidden]{display:none!important}</style>'
+            '<script>if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>'
             '</head><body>{page}</body></html>')
+
+MANIFEST = {
+    "name": "Brainiac", "short_name": "Brainiac", "description": "Command console for Brainiac.",
+    "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#0b0914", "theme_color": "#0b0914",
+    "icons": [{"src": f"/icon-{n}.png", "sizes": f"{n}x{n}", "type": "image/png", "purpose": "any"} for n in (192, 512)],
+}
+# Minimal service worker: makes the app installable. Brainiac is live data, so nothing is cached.
+SERVICE_WORKER = "self.addEventListener('install', () => self.skipWaiting());\n" \
+                 "self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));\n" \
+                 "self.addEventListener('fetch', () => {});\n"
 
 
 class Approvals:
@@ -94,10 +113,12 @@ def page_html() -> str:
 
 
 def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7979) -> ThreadingHTTPServer:
+    from . import icon, keys
     approvals.chronicle = brainiac.chronicle
     brainiac.start_watchers()
     html = page_html().encode("utf-8")
     allowed_hosts = set()
+    holder: dict = {}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # keep the terminal quiet
@@ -109,6 +130,14 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _raw(self, body: bytes, ctype: str, cache: str = "no-store"):
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", cache)
             self.end_headers()
             self.wfile.write(body)
 
@@ -147,7 +176,16 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 self.wfile.write(html)
             elif url.path == "/api/state":
                 self._json({**brainiac.status(), "approvals": approvals.list(), "live": True,
-                            "mind": brainiac.mind.snapshot(), "profile": brainiac.profile()})
+                            "mind": brainiac.mind.snapshot(), "profile": brainiac.profile(), "key": keys.status()})
+            elif url.path == "/api/health":
+                self._json({"app": "brainiac", "home": str(brainiac.config.home)})
+            elif url.path == "/manifest.webmanifest":
+                self._raw(json.dumps(MANIFEST).encode(), "application/manifest+json", "max-age=3600")
+            elif url.path == "/sw.js":
+                self._raw(SERVICE_WORKER.encode(), "text/javascript")
+            elif url.path.startswith("/icon-") and url.path.endswith(".png") and url.path[6:-4].isdigit() \
+                    and int(url.path[6:-4]) in (32, 64, 128, 192, 256, 512, 1024):
+                self._raw(icon.png(int(url.path[6:-4])), "image/png", "max-age=86400")
             elif url.path == "/api/mind":
                 self._json(brainiac.mind.snapshot())
             elif url.path == "/api/profile":
@@ -216,9 +254,31 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 ok = brainiac.disconnect(body.get("name", ""))
                 self._json({"ok": ok}, 200 if ok else 404)
             elif url.path == "/api/integrations/demo":
-                from . import demo_home
+                from .runtime import demo_home_command
 
-                self._json(brainiac.connect("home", command=[sys.executable, str(Path(demo_home.__file__))]))
+                self._json(brainiac.connect("home", command=demo_home_command()))
+            elif url.path == "/api/key":
+                key = (body.get("key") or "").strip()
+                try:
+                    if not keys.KEY_SHAPE.match(key):
+                        raise ValueError("That does not look like an Anthropic API key (they start with sk-ant-).")
+                    ok, message = keys.verify(key)
+                    if not ok:
+                        raise ValueError(message)
+                    source = keys.set_key(key)
+                except (ValueError, RuntimeError) as exc:
+                    return self._json({"ok": False, "error": str(exc)}, 400)
+                brainiac.chronicle.emit("key", {"configured": True, "source": source})
+                self._json({"ok": True, "message": message, "source": source})
+            elif url.path == "/api/shutdown":
+                self._json({"ok": True})
+
+                def stop():
+                    brainiac.chronicle.emit("shutdown", {})
+                    brainiac.close()
+                    holder["server"].shutdown()
+
+                threading.Thread(target=stop, daemon=True).start()
             elif url.path == "/api/cancel":
                 ok = brainiac.cancel(body.get("task", ""))
                 self._json({"ok": ok}, 200 if ok else 404)
@@ -231,6 +291,7 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 self._json({"error": "not found"}, 404)
 
     server = ThreadingHTTPServer((host, port), Handler)
+    holder["server"] = server
     real_port = server.server_address[1]
     allowed_hosts.update({f"127.0.0.1:{real_port}", f"localhost:{real_port}"})
     return server

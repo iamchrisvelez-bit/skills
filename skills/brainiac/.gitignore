@@ -3,3 +3,6 @@ brainiac_workspace/
 brainiac_memory.db
 __pycache__/
 brainiac_evals/
+packaging/macos/.venv/
+packaging/macos/build/
+packaging/macos/dist/
