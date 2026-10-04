@@ -45,6 +45,8 @@ def run_protocol(p: Protocol, client, model: str | None = None, judge=None, capa
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
 
+        if p.setup:
+            p.setup(b)
         ctx = EvalContext(brainiac=b, home=home, judge=judge)
         results = []
         if p.procedure:
@@ -58,6 +60,7 @@ def run_protocol(p: Protocol, client, model: str | None = None, judge=None, capa
         for turn in p.turns:
             if turn.new_session:
                 b.wait_idle()
+                b.integrations.close()
                 b = ctx.brainiac = new_brainiac()
                 session += 1
             before = b.chronicle.next_id - 1
@@ -73,6 +76,7 @@ def run_protocol(p: Protocol, client, model: str | None = None, judge=None, capa
             tr.events = (before, b.chronicle.next_id - 1)
             ctx.turns.append(tr)
         ctx.events = b.chronicle.since(0, limit=100000)
+        b.integrations.close()
 
         for check in p.checks:
             try:

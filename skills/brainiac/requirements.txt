@@ -1,1 +1,5 @@
 anthropic>=1.0
+# Optional: terminal voice (python -m brainiac voice)
+#   SpeechRecognition pyttsx3 pyaudio
+# Optional: PDF rendering
+#   reportlab

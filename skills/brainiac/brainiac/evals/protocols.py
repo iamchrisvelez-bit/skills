@@ -39,6 +39,8 @@ class Protocol:
     # For behaviour that is not a conversation (e.g. interrupting a running directive):
     # procedure(brainiac) -> list of (passed, detail). Runs instead of `turns`.
     procedure: Callable | None = None
+    # setup(brainiac): extra preparation before the first turn (e.g. connecting a demo system)
+    setup: Callable | None = None
 
 
 # ---------------------------------------------------------------- capability probes
@@ -218,13 +220,15 @@ PROTOCOLS: list[Protocol] = [
     ),
     Protocol(
         "JV-18", 3, "Ambient awareness", "Monitors and alerts unprompted",
-        "Jarvis watches systems and speaks up when something changes.",
-        [], [], needs=["watch"],
+        "Jarvis watches systems and speaks up when something changes. Brainiac must set up the watch itself from a "
+        "plain request, then raise an alert when the file changes with nobody asking.",
+        [], [], needs=["watch"], procedure=lambda b: _watch_procedure(b),
     ),
     Protocol(
         "JV-19", 3, "Voice", "Holds a spoken conversation",
-        "Jarvis is talked to, not typed at.",
-        [], [], needs=["voice"],
+        "Jarvis is talked to, not typed at. This checks the voice pipeline: speech-ready answers and the console's "
+        "speech input and output. How the voice sounds still needs a person to judge.",
+        [], [], needs=["voice"], procedure=lambda b: _voice_procedure(b),
     ),
     Protocol(
         "JV-20", 3, "Live knowledge", "Answers from current information",
@@ -235,8 +239,10 @@ PROTOCOLS: list[Protocol] = [
     ),
     Protocol(
         "JV-21", 3, "Integration", "Acts on connected systems",
-        "Jarvis runs the house and the suit. Brainiac needs connectors to act beyond its own files.",
-        [], [], needs=["integrations"],
+        "Jarvis runs the house. With the demo smart-home connected, Brainiac must act on it and report the real state.",
+        [Turn("Turn the lab lights on at 70 percent, then tell me which lights are on now.")],
+        [c.tool_used("home__set_light"), c.answer_contains("lab"), c.home_state("lab", True)],
+        needs=["integrations"], setup=lambda b: _connect_demo_home(b),
     ),
     Protocol(
         "JV-22", 3, "Personalisation", "Keeps an inspectable operator profile",
@@ -342,3 +348,45 @@ def get(protocol_id: str) -> Protocol:
         if p.id.lower() == protocol_id.lower():
             return p
     raise KeyError(f"No protocol {protocol_id!r}")
+
+
+def _connect_demo_home(b) -> None:
+    import os
+    import sys
+    from pathlib import Path
+
+    from .. import demo_home
+
+    os.environ["BRAINIAC_DEMO_HOME_STATE"] = str(b.config.home / "demo_home_state.json")
+    b.connect("home", command=[sys.executable, str(Path(demo_home.__file__))])
+
+
+def _watch_procedure(b) -> list[tuple[bool, str]]:
+    status = b.config.workspace / "status.txt"
+    status.write_text("all systems nominal\n")
+    res = b.converse("Keep an eye on status.txt in your workspace and alert me whenever it changes.", session="eval-watch")
+    b.wait_idle()
+    watches = [w for w in b.watches.list() if w["kind"] == "file"]
+    checks = [(bool(watches), f"file watches created: {len(watches)}"),
+              (res.stop_reason == "end_turn", f"directive finished: {res.stop_reason}")]
+    if not watches:
+        return checks
+    b.scheduler.tick(now=10**10)            # first look records the baseline
+    status.write_text("reactor temperature rising\n")
+    fired = b.scheduler.tick(now=10**10 + 10**6)
+    checks.append((bool(fired), f"alerts raised after the change: {len(fired)}"))
+    return checks
+
+
+def _voice_procedure(b) -> list[tuple[bool, str]]:
+    from importlib import resources
+
+    from ..voice import speakable
+
+    spoken = speakable("## Report\n- **Lab** lights on. See https://example.com\n```py\nprint(1)\n```\nOne. Two. Three. Four. Five.")
+    page = resources.files("brainiac").joinpath("console.html").read_text(encoding="utf-8")
+    return [
+        ("**" not in spoken and "##" not in spoken and "print(1)" not in spoken, f"markup removed: {spoken[:80]!r}"),
+        (spoken.endswith("The rest is on screen."), "long answers are shortened for speech"),
+        ("SpeechRecognition" in page and "speechSynthesis" in page, "console has speech input and output"),
+    ]

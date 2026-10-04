@@ -36,12 +36,12 @@ class HarnessTests(unittest.TestCase):
             if p.turns:
                 self.assertTrue(p.checks, p.id)
 
-    def test_gap_report_lists_missing_capabilities(self):
+    def test_gap_report_and_missing_capabilities(self):
         report = gap_report()
-        self.assertFalse(report["capabilities"]["voice"]["present"])
-        jv19 = next(r for r in report["results"] if r["id"] == "JV-19")
-        self.assertEqual((jv19["status"], jv19["missing"]), ("GAP", ["voice"]))
+        self.assertTrue(all(c["present"] for c in report["capabilities"].values()), report["capabilities"])
         self.assertIn("not measured", scorecard(report))
+        r = run_protocol(get("JV-20"), FakeClient([]), judge=judge_says(5), capabilities={})
+        self.assertEqual((r["status"], r["missing"]), ("GAP", ["web"]))
 
     def test_passing_protocol(self):
         client = FakeClient([([text("391.")], "end_turn")])

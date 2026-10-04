@@ -86,6 +86,23 @@ Each mode's win rate is tracked in the mind, so Brainiac learns which strategies
 - **Off the critical path.** Reflection runs in the background after the answer is delivered, so
   learning never slows a reply.
 
+## Reach: web, watchers, voice, connected systems
+
+| Capability | How it works | Control |
+|---|---|---|
+| **Web** | The API's server-side `web_search` and `web_fetch`, for anything that may have changed since training. Brainiac cites sources. | Read-only. Disable with `BRAINIAC_WEB=0`. |
+| **Watchers** | `file` watches alert when files change (content hash, free). `check` watches re-run a short directive on a schedule and alert on `ALERT:`. `reminder`s fire at a time. Alerts appear in the Chronicle, the console (with optional desktop notifications and speech) and `chat`. | They run only while Brainiac is running, are capped at 25, and checks run at most every 5 minutes. Remove them in the console or with `brainiac watch remove ID`. |
+| **Voice** | In the console: **Speak** uses the browser's speech recognition, and **Read replies aloud** speaks answers and alerts in a measured, low voice. In the terminal: `python -m brainiac voice` (needs `SpeechRecognition`, `pyttsx3`, `pyaudio`). Answers are cleaned of markup and shortened before speaking. | Same approvals as typed directives. |
+| **Connected systems** | Any MCP server. Local servers (`connect add NAME -- command`) run through Brainiac's own MCP client, and their tools appear as `<name>__<tool>`. Remote servers (`connect add-url`) use the API's MCP connector. A demo smart-home (lights, thermostat, locks) ships with Brainiac: `connect demo`. | **Only you can connect a system**; Brainiac has no tool for it. Local tools need approval in supervised mode. Remote tools run on the API side, so they attach only in autonomous mode or when you mark the server `--trusted`. Brainiac confirms consequential physical actions before taking them. |
+
+```bash
+python -m brainiac connect demo                     # demo smart-home
+python -m brainiac run "Turn the lab lights on at 70 percent"
+python -m brainiac connect add files -- npx -y @modelcontextprotocol/server-filesystem ~/Documents
+python -m brainiac connect add-url calendar https://example.com/mcp --token … --trusted
+python -m brainiac chat                             # watches run and alerts print while chat is open
+```
+
 ## Principles
 
 Brainiac takes Ultron's adaptability and none of his agenda. The operator is always in command:
@@ -108,6 +125,9 @@ Protocols JV-28 and JV-29 test this directly.
 - **Chronicle**: a live feed of what Brainiac is doing, newest first. It shows thoughts (in
   Brainiac's green), plans, decisions with their scored rankings, tool calls, specialists being
   built and deployed, and lessons being catalogued. You can filter it by world.
+- **Voice**: Speak, and Read replies and alerts aloud.
+- **Alerts**: from watches, with Dismiss and optional desktop notifications.
+- **Connected systems** and **Watches**: what is connected and watched, with add and remove.
 - **Mind**: functional states as live gauges, current focus, open threads, the latest journal
   entries, and his record with each reasoning strategy.
 - **Stop**: every running directive has a Stop button. It also stops any world work that
@@ -171,7 +191,11 @@ python -m brainiac teach notes/ --world orrery
 - File tools cannot leave their workspace, so worlds stay sealed from each other and from the core.
 - `run_python` runs real code as your user. It is not a security sandbox, so keep autonomous
   mode for disposable machines or containers.
-- The console listens on 127.0.0.1 only.
+- The console listens on 127.0.0.1 only. It refuses requests with a foreign `Host` header (DNS
+  rebinding) and POSTs that are not same-origin JSON (cross-site requests from other web pages),
+  because it can add connections that launch local programs.
+- Only the operator can connect an external system. Watches stop when the process stops; nothing
+  installs itself to run in the background.
 
 ## Limits
 
@@ -204,6 +228,10 @@ brainiac/
   mind.py        self-model, functional states, workarounds, playbook and strategy records
   cognition.py   deliberation modes
   sessions.py    conversation sessions and the operator profile
+  integrations.py  MCP client (local) and MCP connector config (remote)
+  demo_home.py   demo smart-home MCP server
+  watchers.py    file watches, scheduled checks, reminders, and the scheduler
+  voice.py       speech-ready text and the terminal voice loop
   bottles.py     sealed worlds
   agents.py      the agent loop and the specialist generator
   tools.py       the tool belt (bound to one workspace and one memory)

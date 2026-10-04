@@ -16,13 +16,24 @@ API
   POST /api/cancel              {"task": "<task id>"}: stop a running directive
   GET  /api/mind                Brainiac's self-model, functional states, journal and adaptation records
   GET  /api/profile             the operator profile;  POST /api/profile replaces it
+  POST /api/watches             {"kind", "name", "target"|"instruction", "every_minutes", "at", "world"}
+  POST /api/unwatch             {"id": "<watch id>"}
+  POST /api/integrations        {"name", "command": "program args…"} or {"name", "url", "token", "trusted"}
+  POST /api/integrations/remove {"name"}
+  POST /api/integrations/demo   connect the demo smart-home
+
+Requests are accepted only for a localhost Host header (against DNS rebinding),
+and POSTs only as same-origin JSON (against cross-site requests from other pages).
 """
 
 from __future__ import annotations
 
 import json
+import shlex
+import sys
 import threading
 import uuid
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from urllib.parse import parse_qs, urlparse
@@ -84,7 +95,9 @@ def page_html() -> str:
 
 def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7979) -> ThreadingHTTPServer:
     approvals.chronicle = brainiac.chronicle
+    brainiac.start_watchers()
     html = page_html().encode("utf-8")
+    allowed_hosts = set()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # keep the terminal quiet
@@ -106,7 +119,24 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
             except json.JSONDecodeError:
                 return {}
 
+        def _trusted(self, post: bool) -> bool:
+            host = (self.headers.get("Host") or "").lower()
+            if host not in allowed_hosts:
+                self._json({"error": "Unexpected Host header."}, 403)
+                return False
+            if post:
+                if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                    self._json({"error": "JSON requests only."}, 415)
+                    return False
+                origin = self.headers.get("Origin")
+                if origin and urlparse(origin).netloc.lower() not in allowed_hosts:
+                    self._json({"error": "Cross-origin requests are refused."}, 403)
+                    return False
+            return True
+
         def do_GET(self):
+            if not self._trusted(post=False):
+                return
             url = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if url.path in ("/", "/index.html"):
@@ -134,6 +164,8 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 self._json({"error": "not found"}, 404)
 
         def do_POST(self):
+            if not self._trusted(post=True):
+                return
             url, body = urlparse(self.path), self._body()
             if url.path == "/api/directive":
                 goal = (body.get("goal") or "").strip()
@@ -161,6 +193,32 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 except (FileExistsError, ValueError) as exc:
                     return self._json({"error": str(exc)}, 409)
                 self._json(w.to_json())
+            elif url.path == "/api/watches":
+                try:
+                    w = brainiac.watch(body.get("kind", ""), body.get("name", ""), target=body.get("target", ""),
+                                       instruction=body.get("instruction", ""), at=body.get("at", ""),
+                                       every_minutes=float(body.get("every_minutes") or 0), world=body.get("world") or None)
+                except (ValueError, FileNotFoundError) as exc:
+                    return self._json({"error": str(exc)}, 400)
+                self._json(w)
+            elif url.path == "/api/unwatch":
+                ok = brainiac.unwatch(body.get("id", ""))
+                self._json({"ok": ok}, 200 if ok else 404)
+            elif url.path == "/api/integrations":
+                try:
+                    command = shlex.split(body["command"]) if body.get("command") else None
+                    entry = brainiac.connect(body.get("name", ""), command=command, url=body.get("url") or None,
+                                             authorization_token=body.get("token") or None, trusted=bool(body.get("trusted")))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                self._json({k: v for k, v in entry.items() if k != "authorization_token"})
+            elif url.path == "/api/integrations/remove":
+                ok = brainiac.disconnect(body.get("name", ""))
+                self._json({"ok": ok}, 200 if ok else 404)
+            elif url.path == "/api/integrations/demo":
+                from . import demo_home
+
+                self._json(brainiac.connect("home", command=[sys.executable, str(Path(demo_home.__file__))]))
             elif url.path == "/api/cancel":
                 ok = brainiac.cancel(body.get("task", ""))
                 self._json({"ok": ok}, 200 if ok else 404)
@@ -172,4 +230,7 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
             else:
                 self._json({"error": "not found"}, 404)
 
-    return ThreadingHTTPServer((host, port), Handler)
+    server = ThreadingHTTPServer((host, port), Handler)
+    real_port = server.server_address[1]
+    allowed_hosts.update({f"127.0.0.1:{real_port}", f"localhost:{real_port}"})
+    return server

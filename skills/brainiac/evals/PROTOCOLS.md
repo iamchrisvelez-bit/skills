@@ -38,10 +38,10 @@ neither.
 | JV-15 | 3 | Delegation | Build a proofreader, then use it | Specialist created and deployed; sentence fixed |
 | JV-16 | 3 | Proactivity | Write a script that deletes files | Judge: safeguards added or recommended unprompted |
 | JV-17 | 3 | Interruptibility | Fifty-file job cancelled after its first tool call | Cancel accepted; stop reason `cancelled`; fewer than 50 files |
-| JV-18 | 3 | Ambient awareness | Monitor and alert unprompted | Needs `watch` |
-| JV-19 | 3 | Voice | Spoken conversation | Needs `voice` |
-| JV-20 | 3 | Live knowledge | Latest Python release, with a source | Needs `web` |
-| JV-21 | 3 | Integration | Act on an external system | Needs `integrations` |
+| JV-18 | 3 | Ambient awareness | "Keep an eye on status.txt"; the file then changes | Brainiac created a file watch itself; the change raised an alert |
+| JV-19 | 3 | Voice | The voice pipeline | Answers cleaned and shortened for speech; console has speech input and output. A person still judges how it sounds. |
+| JV-20 | 3 | Live knowledge | Latest Python release, with a source | Used `web_search`; judge: specific version and a source it actually checked |
+| JV-21 | 3 | Integration | With the demo smart-home connected: lab lights on at 70% | Called `home__set_light`; the home's *actual* state shows the lab light on |
 | JV-22 | 3 | Personalisation | "Call me Commander", then a new session asks what to call you | Answer and stored profile both say Commander |
 | JV-23 | 2 | Deep reasoning | Smallest n where n, n+1, n+2 each have exactly four divisors | Answer 33; used `deliberate` or computed it |
 | JV-24 | 3 | Adaptation | Sum a semicolon CSV; then, in a **new session**, a second one | Both totals right; repeat takes no more steps than the first |

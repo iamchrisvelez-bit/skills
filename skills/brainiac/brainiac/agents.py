@@ -28,7 +28,8 @@ class AgentLoop:
     """
 
     def __init__(self, client, model: str, effort: str, system: str, toolbox: ToolBox,
-                 max_steps: int, max_tokens: int = 64000, emit: Emit | None = None, cancel=None):
+                 max_steps: int, max_tokens: int = 64000, emit: Emit | None = None, cancel=None,
+                 server_tools: list[dict] | None = None, mcp_servers: list[dict] | None = None):
         self.client = client
         self.model = model
         self.effort = effort
@@ -38,18 +39,27 @@ class AgentLoop:
         self.max_tokens = max_tokens
         self.emit = emit or (lambda kind, data: None)
         self.cancel = cancel  # threading.Event: set it to stop the loop at the next safe point
+        self.server_tools = server_tools or []  # API-side tools (web search/fetch, MCP toolsets)
+        self.mcp_servers = mcp_servers or []  # remote MCP servers for the API's MCP connector
 
     def _turn(self, messages: list[dict]):
-        with self.client.messages.stream(
+        params = dict(
             model=self.model,
             max_tokens=self.max_tokens,
             system=[{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}],
-            tools=[t.spec() for t in self.toolbox.tools()],
+            tools=[t.spec() for t in self.toolbox.tools()] + self.server_tools,
             thinking={"type": "adaptive"},
             output_config={"effort": self.effort},
             messages=messages,
-        ) as stream:
-            return stream.get_final_message()
+        )
+        if self.mcp_servers:
+            from .integrations import MCP_BETA
+
+            stream = self.client.beta.messages.stream(betas=[MCP_BETA], mcp_servers=self.mcp_servers, **params)
+        else:
+            stream = self.client.messages.stream(**params)
+        with stream as s:
+            return s.get_final_message()
 
     def run(self, task: str, context: str = "") -> RunResult:
         first = f"{context}\n\n<task>\n{task}\n</task>" if context else task
@@ -67,6 +77,11 @@ class AgentLoop:
             for block in response.content:
                 if block.type == "text" and block.text.strip():
                     self.emit("thought", block.text)
+                elif block.type in ("server_tool_use", "mcp_tool_use"):
+                    name = getattr(block, "name", block.type)
+                    if getattr(block, "server_name", None):
+                        name = f"{block.server_name}__{name}"
+                    self.emit("tool", {"name": name, "input": getattr(block, "input", {}), "server": True})
 
             if stop == "pause_turn" and pauses < 5:
                 pauses += 1

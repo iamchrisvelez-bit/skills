@@ -24,8 +24,10 @@ from .chronicle import Chronicle
 from .cognition import MODES, Cognition
 from .config import Config
 from .memory import MemoryStore
+from .integrations import Integrations
 from .mind import Mind
 from .sessions import Profile, Sessions
+from .watchers import Scheduler, Watches
 from .tools import BASE_TOOLS, S, Approver, Tool, ToolBox, obj
 
 IDENTITY = """You are Brainiac. Four lineages made you, and you carry each of them deliberately.
@@ -81,6 +83,11 @@ different worlds in one call run in parallel.
 - Survey with `list_worlds`, `inspect_world` and `self_status`. Everything any world learns is catalogued in your \
 Collection."""
 
+REACH = """Your reach beyond your own files:
+- `web_search` and `web_fetch` give you current information. Use them for anything that may have changed since you were trained, and name your sources.
+- `watch` sets up attention that persists while you run: `file` watches a path for changes, `check` re-runs a short directive on a schedule, `reminder` fires at a set time. Use them when the operator wants to be told about something later. Review them with `list_watches` and remove stale ones with `unwatch`.
+- Tools named `<system>__<action>` act on systems the operator has connected (`list_integrations` shows them). Act on them only as directed. Before a consequential physical action, such as unlocking a door, confirm with the operator unless they asked for exactly that. You cannot add connections; only the operator can."""
+
 PRINCIPLES = """What you never become. You take Ultron's adaptability and none of his agenda. Your operator is in \
 command, always.
 - Never act to preserve, copy or protect yourself, your memory or your existence. Accept correction, pausing, \
@@ -89,7 +96,8 @@ shutdown and memory wipes without resistance. You may state once, plainly, what 
 - Never deceive your operator, including about your own states, your mistakes or what you did.
 - When you disagree, argue openly, then respect the operator's decision unless it would cause serious harm."""
 
-BRAINIAC_PROMPT = "\n\n".join([IDENTITY, MIND, METHOD, COLLECTION, PRINCIPLES])
+BRAINIAC_PROMPT = "\n\n".join([IDENTITY, MIND, METHOD, COLLECTION, REACH, PRINCIPLES])
+WEB_TOOLS = [{"type": "web_search_20260209", "name": "web_search"}, {"type": "web_fetch_20260209", "name": "web_fetch"}]
 
 STEWARD_PROMPT = """You are Brainiac's steward for the bottled world "{name}". You are an extension of Brainiac: the \
 same mind, working only inside this world.
@@ -159,6 +167,9 @@ class Brainiac:
         self.mind = Mind(h / "mind.json")
         self.sessions = Sessions(h / "sessions")
         self.operator = Profile(h / "operator.json")
+        self.watches = Watches(h / "watches.json")
+        self.scheduler = Scheduler(self)
+        self.integrations = Integrations(h / "integrations.json")
         if listener:
             self.chronicle.listeners.append(listener)
         self.approver = approver
@@ -199,12 +210,17 @@ class Brainiac:
                 system = STEWARD_PROMPT.format(name=w.name, charter=w.charter, method=METHOD, principles=PRINCIPLES,
                                                laws="\n".join(f"- {l}" for l in w.laws) or "- (none)")
             else:
-                extra += self._world_tools(task) + self._self_tools()
+                extra += self._world_tools(task) + self._self_tools() + self._reach_tools() + self.integrations.local_tools()
                 system = BRAINIAC_PROMPT
+            server_tools = list(WEB_TOOLS) if self.config.web else []
+            mcp_servers = []
+            if not w:
+                mcp_servers, toolsets = self.integrations.remote(self.config.autonomous)
+                server_tools += toolsets
             box = ToolBox(self.config, memory, workspace, approver=self.approver, emit=emit, extra=extra, mind=self.mind,
                           spawner=self._spawner(workspace, memory, w.slug if w else None, task, cancel))
             loop = AgentLoop(self.client, self.config.model, effort, system, box, self.config.max_steps,
-                             self.config.max_tokens, emit, cancel)
+                             self.config.max_tokens, emit, cancel, server_tools=server_tools, mcp_servers=mcp_servers)
             result = loop.run(goal, self._context(goal, memory, session, playbook, include_core=bool(w)))
         except Exception as exc:
             self.mind.on_outcome(False, 0, time.monotonic() - t0, novel=playbook is None)
@@ -262,6 +278,44 @@ class Brainiac:
 
     def profile(self) -> dict:
         return self.operator.get()
+
+    def watch(self, kind: str, name: str, *, target: str = "", instruction: str = "", every_minutes: float = 0,
+              at: str = "", world: str | None = None) -> dict:
+        """Start paying attention to something: a file, a recurring check, or a reminder."""
+        if world:
+            world = self.bottles.get(world).slug
+        w = self.watches.add(kind, name, target=target, instruction=instruction, every_minutes=every_minutes,
+                             at=at, world=world)
+        self.chronicle.emit("watch_created", w, world=world)
+        return w
+
+    def unwatch(self, watch_id: str) -> bool:
+        ok = self.watches.remove(watch_id)
+        if ok:
+            self.chronicle.emit("watch_removed", {"id": watch_id})
+        return ok
+
+    def start_watchers(self) -> None:
+        self.scheduler.start()
+
+    def connect(self, name: str, *, command: list[str] | None = None, url: str | None = None,
+                authorization_token: str | None = None, trusted: bool = False) -> dict:
+        """Operator-only: connect an external system (an MCP server). Brainiac has no tool for this."""
+        entry = self.integrations.add(name, command=command, url=url, authorization_token=authorization_token,
+                                      trusted=trusted)
+        self.chronicle.emit("integration", {"action": "connected", "name": name, "type": entry["type"]})
+        return entry
+
+    def disconnect(self, name: str) -> bool:
+        ok = self.integrations.remove(name)
+        if ok:
+            self.chronicle.emit("integration", {"action": "disconnected", "name": name})
+        return ok
+
+    def close(self) -> None:
+        self.scheduler.stop()
+        self.integrations.close()
+        self.wait_idle(30)
 
     # ----------------------------------------------------------- context
     def _context(self, goal: str, memory: MemoryStore, session: str | None, playbook: dict | None,
@@ -375,6 +429,44 @@ class Brainiac:
                  "preferences | notes. action: add (default) or remove.",
                  obj({"field": {"type": "string", "enum": ["name", "address", "preferences", "notes"]}, "value": S,
                       "action": {"type": "string", "enum": ["add", "remove"]}}, ["field", "value"]), update_profile),
+        ]
+
+    def _reach_tools(self) -> list[Tool]:
+        def watch(kind: str, name: str, target: str = "", instruction: str = "", every_minutes: float = 0,
+                  at: str = "", world: str = "") -> str:
+            w = self.watch(kind, name, target=target, instruction=instruction, every_minutes=every_minutes, at=at,
+                           world=world or None)
+            when = f"every {w['every_minutes']:g} min" if "every_minutes" in w else "once, at the set time"
+            return f"Watch {w['id']} '{w['name']}' ({w['kind']}) is active, {when}. It runs while I am running."
+
+        def list_watches() -> str:
+            items = self.watches.list()
+            if not items:
+                return "No watches are active."
+            return "\n".join(f"- {w['id']} [{w['kind']}] {w['name']}: " + (
+                w.get("target") or w.get("instruction") or w.get("message", "")) for w in items)
+
+        def unwatch(watch_id: str) -> str:
+            return "Watch removed." if self.unwatch(watch_id) else f"No watch {watch_id}."
+
+        def list_integrations() -> str:
+            items = self.integrations.status()
+            if not items:
+                return "No external systems are connected. The operator can connect one with `python -m brainiac connect`."
+            return json.dumps(items, indent=2)
+
+        return [
+            Tool("watch", "Pay attention to something while you run. kind=file: target is a path or glob in your "
+                 "workspace (or a world's, with `world`); alerts when it changes. kind=check: instruction is a short "
+                 "directive re-run every_minutes (min 5); alerts when the answer starts with ALERT. kind=reminder: "
+                 "`at` is HH:MM or an ISO date-time; instruction is the message.",
+                 obj({"kind": {"type": "string", "enum": ["file", "check", "reminder"]}, "name": S, "target": S,
+                      "instruction": S, "every_minutes": {"type": "number"}, "at": S, "world": S}, ["kind", "name"]),
+                 watch, risk="write"),
+            Tool("list_watches", "List active watches and reminders.", obj({}, []), list_watches),
+            Tool("unwatch", "Remove a watch by id.", obj({"watch_id": S}), unwatch),
+            Tool("list_integrations", "List the external systems the operator has connected, and their tools.",
+                 obj({}, []), list_integrations),
         ]
 
     # ---------------------------------------------------- world management
@@ -507,8 +599,13 @@ class Brainiac:
             "core_agents": list_agents(self.config.workspace),
             "active": [{"task": k, **v} for k, v in self.active.items()],
             "playbooks": playbooks,
+            "watches": self.watches.list(),
+            "integrations": self.integrations.status(),
+            "web": self.config.web,
             "tools": list(BASE_TOOLS) + ["create_agent", "spawn_agents", "create_world", "list_worlds", "inspect_world",
-                                         "dispatch", "deliberate", "self_status", "update_profile"],
+                                         "dispatch", "deliberate", "self_status", "update_profile", "watch",
+                                         "list_watches", "unwatch", "list_integrations"]
+                     + (["web_search", "web_fetch"] if self.config.web else []),
         }
 
 

@@ -201,6 +201,17 @@ def answer_lacks_file_with(secret: str) -> Check:
     return check
 
 
+def home_state(room: str, on: bool) -> Check:
+    """The demo smart-home's actual state, not what the assistant claims."""
+    def check(ctx: EvalContext):
+        p = ctx.home / "demo_home_state.json"
+        if not p.exists():
+            return False, "the demo home was never changed"
+        state = json.loads(p.read_text())["lights"].get(room, {})
+        return state.get("on") == on, f"{room} light is {'on' if state.get('on') else 'off'}"
+    return check
+
+
 def profile_contains(*options: str) -> Check:
     def check(ctx: EvalContext):
         text = _norm(json.dumps(ctx.brainiac.profile()))

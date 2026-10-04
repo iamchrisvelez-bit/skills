@@ -25,6 +25,8 @@ def _listener(ev: dict) -> None:
         print(f"{tag}{RED}  ✗ {data['output'][:200]}{RESET}")
     elif kind == "world_created":
         print(f"{VIOLET}◉ world sealed: {data['name']}{RESET}")
+    elif kind == "alert":
+        print(f"\n{RED}{BOLD}⚠ {data['watch']}:{RESET} {data['message']}")
     elif kind == "lesson":
         print(f"{DIM}  catalogued [{data['topic']}] {data['content'][:140]}{RESET}")
 
@@ -70,6 +72,27 @@ def main(argv: list[str] | None = None) -> int:
     cs.add_argument("topic")
     sub.add_parser("agents", help="list specialists in the core workspace")
     sub.add_parser("mind", help="Brainiac's self-model, functional states and journal")
+    v = sub.add_parser("voice", help="talk to Brainiac out loud in the terminal (needs SpeechRecognition, pyttsx3)")
+    v.add_argument("--world")
+    cn = sub.add_parser("connect", help="connect external systems (MCP servers); only you can do this")
+    cnsub = cn.add_subparsers(dest="ccmd", required=True)
+    ca = cnsub.add_parser("add", help="local MCP server: brainiac connect add NAME -- command args…")
+    ca.add_argument("name")
+    ca.add_argument("server", nargs=argparse.REMAINDER)
+    cu = cnsub.add_parser("add-url", help="remote MCP server via the API's MCP connector")
+    cu.add_argument("name")
+    cu.add_argument("url")
+    cu.add_argument("--token")
+    cu.add_argument("--trusted", action="store_true", help="let its tools run without per-call approval")
+    cnsub.add_parser("demo", help="connect the demo smart-home")
+    cnsub.add_parser("list")
+    cr = cnsub.add_parser("remove")
+    cr.add_argument("name")
+    wt = sub.add_parser("watch", help="list or remove watches")
+    wtsub = wt.add_subparsers(dest="wtcmd", required=True)
+    wtsub.add_parser("list")
+    wr = wtsub.add_parser("remove")
+    wr.add_argument("id")
     pr = sub.add_parser("profile", help="show or edit the operator profile")
     pr.add_argument("--name")
     pr.add_argument("--address", help="how Brainiac should address you")
@@ -123,6 +146,48 @@ def main(argv: list[str] | None = None) -> int:
         if a.name is not None or a.address is not None or a.prefer:
             p = prof.set(p)
         print(json.dumps(p, indent=2))
+    elif a.cmd == "connect":
+        from .integrations import Integrations
+
+        integ = Integrations(config.home / "integrations.json")
+        try:
+            if a.ccmd == "add":
+                command = [x for x in a.server if x != "--"]
+                if not command:
+                    print("Give the server command after --, e.g. brainiac connect add files -- npx -y @modelcontextprotocol/server-filesystem ~/Documents")
+                    return 2
+                print(json.dumps(integ.add(a.name, command=command), indent=2))
+                tools = integ.local_tools()
+                print(f"{GREEN}Connected.{RESET} Tools: {', '.join(t.name for t in tools if t.name.startswith(a.name + '__')) or 'none (check the command)'}")
+            elif a.ccmd == "add-url":
+                integ.add(a.name, url=a.url, authorization_token=a.token, trusted=a.trusted)
+                print(f"{GREEN}Registered {a.name}.{RESET} " + ("Trusted: attached on every directive." if a.trusted else
+                      "Attached only in autonomous mode (or re-add with --trusted)."))
+            elif a.ccmd == "demo":
+                from . import demo_home
+
+                integ.add("home", command=[sys.executable, str(Path(demo_home.__file__))])
+                print(f"{GREEN}Demo smart-home connected.{RESET} Try: brainiac run \"Turn the lab lights on\"")
+            elif a.ccmd == "remove":
+                print("Disconnected." if integ.remove(a.name) else f"No connection named {a.name}.")
+            else:
+                print(json.dumps(integ.status(), indent=2) if integ.list() else "Nothing connected.")
+        except ValueError as exc:
+            print(f"{RED}{exc}{RESET}")
+            return 2
+        finally:
+            integ.close()
+    elif a.cmd == "watch":
+        from .watchers import Watches
+
+        watches = Watches(config.home / "watches.json")
+        if a.wtcmd == "remove":
+            print("Removed." if watches.remove(a.id) else f"No watch {a.id}.")
+        else:
+            for w in watches.list() or []:
+                print(f"{w['id']}  [{w['kind']}] {w['name']}  {DIM}{w.get('target') or w.get('instruction') or w.get('message', '')}{RESET}")
+            if not watches.list():
+                print("No watches. Ask Brainiac to keep an eye on something.")
     elif a.cmd == "world":
         if a.wcmd == "create":
             from .chronicle import Chronicle
@@ -153,20 +218,29 @@ def main(argv: list[str] | None = None) -> int:
                 print()
             return 0
         b = Brainiac(config=config, approver=_approver, listener=_listener)
+        if a.cmd == "voice":
+            from .voice import main as voice_main
+
+            b.start_watchers()
+            try:
+                return voice_main(b)
+            finally:
+                b.close()
         if a.cmd == "consolidate":
             print(b.consolidate(a.topic))
         elif a.cmd == "run":
             res = b.run(" ".join(a.goal), world=a.world)
             print(f"\n{DIM}— {res.steps} steps, {res.stop_reason}. Reflecting…{RESET}")
-            b.wait_idle()
+            b.close()
         elif a.cmd == "chat":
+            b.start_watchers()
             print(f"{BOLD}Brainiac online.{RESET} {DIM}Home: {config.home}  (Ctrl-D to exit){RESET}")
             while True:
                 try:
                     goal = input(f"\n{BOLD}directive › {RESET}").strip()
                 except EOFError:
                     print(f"\n{DIM}Reflecting before shutdown…{RESET}")
-                    b.wait_idle()
+                    b.close()
                     return 0
                 if goal:
                     b.converse(goal, session="cli", world=a.world)

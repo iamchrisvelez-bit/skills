@@ -175,7 +175,25 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
 .ev.journal .text::before { content: "Journal · "; font-style: normal; color: var(--coluan); font-weight: 500; }
 .ev.deliberation details summary { cursor: pointer; }
 .ev.deliberation pre { margin: 6px 0 0; padding: 8px; background: var(--void); border-radius: 3px; white-space: pre-wrap; font: 12px/1.5 var(--body); color: var(--text); max-height: 280px; overflow: auto; }
-@media (prefers-reduced-motion: reduce) { .sigil.busy circle.n { animation: none; } .state .fill { transition: none; } }
+/* ---------- voice, alerts, reach */
+.voice { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.mic { display: inline-flex; align-items: center; gap: 8px; }
+.mic svg { width: 14px; height: 14px; fill: currentColor; }
+.mic[aria-pressed="true"] { border-color: var(--alert); color: var(--alert); animation: listen 1.2s ease-in-out infinite; }
+@keyframes listen { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--alert) 25%, transparent); } }
+.toggle { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.toggle input { width: auto; }
+.alert { border: 1px solid var(--warn); border-radius: 4px; padding: 8px 10px; display: grid; gap: 2px; background: color-mix(in srgb, var(--warn) 7%, transparent); }
+.alert.warn { border-color: var(--alert); background: color-mix(in srgb, var(--alert) 7%, transparent); }
+.alert .name { font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+.alert .name small { font: 11px var(--mono); color: var(--muted); font-weight: 400; }
+.alerts { display: grid; gap: 8px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn.small { padding: 3px 10px; font-size: 12px; justify-self: start; }
+.inline-form { display: grid; gap: 6px; margin-top: 10px; }
+.inline-form .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.ok-dot::before { content: "● "; color: var(--coluan); } .bad-dot::before { content: "● "; color: var(--alert); } .idle-dot::before { content: "● "; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .sigil.busy circle.n { animation: none; } .state .fill { transition: none; } .mic[aria-pressed="true"] { animation: none; } }
 </style>
 
 <div class="app">
@@ -212,6 +230,41 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
         </form>
       </div>
       <div class="panel">
+        <h2>Connected systems <span id="intCount"></span></h2>
+        <ul class="list" id="integrations"></ul>
+        <div class="row-actions" style="margin-top:10px"><button class="btn small node" type="button" id="demoHome">Connect demo smart-home</button></div>
+        <details class="seal" style="margin-top:10px">
+          <summary>Connect a system</summary>
+          <form class="inline-form" id="intForm">
+            <label for="iName">Name<input id="iName" placeholder="calendar" maxlength="31" autocomplete="off"></label>
+            <label for="iCommand">Local MCP server command<input id="iCommand" placeholder="npx -y @modelcontextprotocol/server-filesystem ~/Documents" autocomplete="off"></label>
+            <label for="iUrl">or remote MCP server URL<input id="iUrl" placeholder="https://…" autocomplete="off"></label>
+            <label for="iToken">Access token (remote only)<input id="iToken" type="password" autocomplete="off"></label>
+            <label class="toggle" for="iTrusted"><input type="checkbox" id="iTrusted"> Trusted: remote tools run without per-call approval</label>
+            <button class="btn node" type="submit">Connect</button>
+            <p class="form-msg" id="intMsg" role="status"></p>
+          </form>
+        </details>
+      </div>
+      <div class="panel">
+        <h2>Watches <span id="watchCount"></span></h2>
+        <ul class="list" id="watches"></ul>
+        <details class="seal" style="margin-top:10px">
+          <summary>Add a watch</summary>
+          <form class="inline-form" id="watchForm">
+            <div class="two">
+              <label for="wKind">Kind<select id="wKind"><option value="file">File changes</option><option value="check">Scheduled check</option><option value="reminder">Reminder</option></select></label>
+              <label for="wEvery">Every (min)<input id="wEvery" type="number" min="0.25" step="0.25" value="1"></label>
+            </div>
+            <label for="wNameW">Name<input id="wNameW" maxlength="80" placeholder="Build log" autocomplete="off"></label>
+            <label for="wTarget">File or glob / check / reminder text<input id="wTarget" placeholder="logs/*.log" autocomplete="off"></label>
+            <label for="wAt">At (reminders: HH:MM or date-time)<input id="wAt" placeholder="17:30" autocomplete="off"></label>
+            <button class="btn node" type="submit">Add watch</button>
+            <p class="form-msg" id="watchMsg" role="status"></p>
+          </form>
+        </details>
+      </div>
+      <div class="panel">
         <details class="seal" id="sealBox">
           <summary>Seal a new world</summary>
           <form class="stack" id="worldForm">
@@ -231,6 +284,14 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
         <label for="goal">Speak to Brainiac. He remembers the conversation.
           <textarea id="goal" required placeholder="Create a world for a tabletop RPG campaign, then have its steward draft the setting bible and render a map."></textarea>
         </label>
+        <div class="voice">
+          <button class="btn mic" type="button" id="mic" aria-pressed="false" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+            <span>Speak</span>
+          </button>
+          <label class="toggle" for="speakReplies"><input type="checkbox" id="speakReplies"> Read replies and alerts aloud</label>
+          <span class="form-msg" id="voiceMsg" role="status"></span>
+        </div>
         <div class="row">
           <label for="target">Send to
             <select id="target"><option value="">Brainiac (overseer)</option></select>
@@ -247,6 +308,10 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
     </section>
 
     <aside class="col side-col" aria-label="Mind, approvals, specialists and the Collection">
+      <div class="panel" id="alertsPanel" hidden>
+        <h2>Alerts <span><button class="btn small" type="button" id="notifyBtn">Desktop alerts</button></span></h2>
+        <div class="alerts" id="alerts"></div>
+      </div>
       <div class="panel" id="mindPanel">
         <h2>Mind <span id="mindAge"></span></h2>
         <div class="states" id="states"></div>
@@ -331,6 +396,16 @@ const DEMO_STATE = {
   },
   playbooks: [{ name: "playbook:csv-total", uses: 4, wins: 4, avg_steps: 2.3 }, { name: "playbook:orbit-render", uses: 3, wins: 3, avg_steps: 5.0 }, { name: "playbook:weekly-ledger-report", uses: 2, wins: 1, avg_steps: 7.5 }],
   profile: { name: "Example operator", address: "sir", preferences: ["Metric units", "Short answers unless I ask for detail"], notes: ["Works late on Thursdays", "Prefers diagrams over tables"] },
+  watches: [
+    { id: "w1", kind: "file", name: "Ledger imports", target: "imports/*.csv", every_minutes: 1, world: "ledger", fired: 2 },
+    { id: "w2", kind: "check", name: "Orrery nightly build", instruction: "Run the simulation tests and report failures", every_minutes: 720, world: "orrery", fired: 0 },
+    { id: "w3", kind: "reminder", name: "Call Lucius", message: "Call Lucius about the prototype", due: now + 5400 },
+  ],
+  integrations: [
+    { name: "home", type: "stdio", connected: true, tools: ["get_status", "set_light", "set_thermostat", "set_lock"], error: null },
+    { name: "calendar", type: "url", url: "https://calendar.example/mcp", trusted: false, error: null },
+  ],
+  web: true,
   approvals: [{ id: "example", tool: "write_file", args: { path: "renders/flyby-notes.md", content: "# Comet C/2026 flyby\nPerihelion 0.42 AU on day 211 ..." } }],
 };
 const DEMO_SCRIPT = [
@@ -353,6 +428,9 @@ const DEMO_SCRIPT = [
   ["thought", null, "Orrery reports success with energy drift 3.1e-8, inside tolerance. The flyby diagram is at bottles/orrery/workspace/renders/comet-flyby.svg. The integrator lesson is now in the Collection."],
   ["task_end", null, { ok: true, steps: 5, result: "Done." }],
   ["journal", null, { entry: "Verlet held energy drift to 3e-8 on the flyby. I trust it now for hyperbolic orbits, and I have written that down so I stop re-checking.", focus: "Small-body dynamics in Orrery" }],
+  ["alert", "ledger", { watch: "Ledger imports", kind: "file", message: "imports/*.csv changed.", severity: "info" }],
+  ["tool", null, { name: "home__set_light", input: { room: "lab", on: true, brightness: 70 } }],
+  ["tool", null, { name: "web_search", input: { query: "C/2026 comet discovery orbital elements" }, server: true }],
   ["workaround", "ledger", { signature: "run_python: ValueError: could not convert string to float: <s>", hints: ["`run_python` succeeded afterwards with csv.reader(f, delimiter=';')"], recalled: true }],
 ];
 
@@ -433,6 +511,7 @@ function renderState() {
   sel.value = [...sel.options].some(o => o.value === keep) ? keep : "";
 
   renderMind(s.mind);
+  renderReach(s);
   renderPlaybooks(s.playbooks || []);
   if (!profileDirty) fillProfile(s.profile);
 
@@ -487,6 +566,122 @@ function renderState() {
   renderFilters();
 }
 function worldName(slug) { return state?.worlds.find(w => w.slug === slug)?.name || slug; }
+
+/* --------------------------------------------------------------- reach */
+function renderReach(s) {
+  const ints = s.integrations || [], ul = $("integrations"); ul.replaceChildren();
+  $("intCount").textContent = String(ints.length);
+  if (!ints.length) ul.append(el("li", "sub", "Nothing connected. Connect the demo smart-home to try it, or any MCP server."));
+  for (const i of ints) {
+    const li = el("li"), name = el("div", "name");
+    const dot = i.error ? "bad-dot" : i.type === "url" ? (i.trusted || s.autonomous ? "ok-dot" : "idle-dot") : i.connected ? "ok-dot" : "idle-dot";
+    name.append(el("span", dot, i.name), el("small", null, i.type === "url" ? (i.trusted ? "remote · trusted" : "remote") : "local"));
+    li.append(name);
+    if (i.error) li.append(el("div", "form-msg err", i.error));
+    else if (i.tools?.length) li.append(el("div", "sub", i.tools.join(" · ")));
+    else if (i.type === "url") li.append(el("div", "sub", i.trusted || s.autonomous ? i.url : `${i.url} (attached only when trusted or autonomous)`));
+    else li.append(el("div", "sub", "Starts on first use."));
+    const rm = el("button", "btn small", "Disconnect"); rm.type = "button";
+    rm.onclick = () => post("/api/integrations/remove", { name: i.name }, $("intMsg"), `${i.name} disconnected.`);
+    li.append(rm); ul.append(li);
+  }
+  const ws = s.watches || [], wl = $("watches"); wl.replaceChildren();
+  $("watchCount").textContent = String(ws.length);
+  if (!ws.length) wl.append(el("li", "sub", "Nothing watched. Ask Brainiac to keep an eye on something, or add a watch here."));
+  for (const w of ws) {
+    const li = el("li"), name = el("div", "name");
+    name.append(el("span", null, w.name), el("small", null, w.kind + (w.world ? ` · ${worldName(w.world)}` : "")));
+    const what = w.kind === "reminder" ? `${w.message || ""} · ${new Date(w.due * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
+      : `${w.target || w.instruction} · every ${w.every_minutes} min${w.fired ? ` · fired ${w.fired}×` : ""}`;
+    const rm = el("button", "btn small", "Remove"); rm.type = "button";
+    rm.onclick = () => post("/api/unwatch", { id: w.id }, $("watchMsg"), "Watch removed.");
+    li.append(name, el("div", "sub", what), rm); wl.append(li);
+  }
+}
+async function post(path, body, msgEl, okText) {
+  if (!LIVE) { msgEl.className = "form-msg err"; msgEl.textContent = "Example data only. Connect the console to change this."; return null; }
+  try { const r = await api(path, body); msgEl.className = "form-msg ok"; msgEl.textContent = okText; pollState(); return r; }
+  catch (e) { msgEl.className = "form-msg err"; msgEl.textContent = e.message; return null; }
+}
+
+/* ---------------------------------------------------------------- alerts */
+const dismissed = new Set();
+function renderAlerts() {
+  const list = events.filter(e => e.kind === "alert" && !dismissed.has(e.id)).slice(-6).reverse();
+  $("alertsPanel").hidden = !list.length;
+  const box = $("alerts"); box.replaceChildren();
+  for (const a of list) {
+    const card = el("div", "alert " + (a.data.severity || "info")), name = el("div", "name");
+    name.append(el("span", null, a.data.watch), el("small", null, fmtTime(a.ts)));
+    const x = el("button", "btn small", "Dismiss"); x.type = "button";
+    x.onclick = () => { dismissed.add(a.id); renderAlerts(); };
+    card.append(name, el("div", "sub", a.data.message), x); box.append(card);
+  }
+}
+function notifyAlert(a) {
+  try { if (window.Notification && Notification.permission === "granted") new Notification(`Brainiac: ${a.data.watch}`, { body: a.data.message }); } catch {}
+  if ($("speakReplies").checked) say(`Alert. ${a.data.watch}. ${a.data.message}`);
+}
+$("notifyBtn").addEventListener("click", async () => {
+  try { const p = await Notification.requestPermission(); $("notifyBtn").textContent = p === "granted" ? "Desktop alerts on" : "Desktop alerts blocked"; }
+  catch { $("notifyBtn").textContent = "Not available here"; }
+});
+
+/* ----------------------------------------------------------------- voice */
+function speakable(text, maxSentences = 4) {
+  let t = String(text || "").replace(/```[\s\S]*?```/g, " (code is on screen) ").replace(/`([^`]*)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, "").replace(/[*_~|>#]/g, "")
+    .replace(/https?:\/\/\S+/g, "the link on screen").replace(/\s+/g, " ").trim();
+  const sentences = t.split(/(?<=[.!?])\s+/);
+  return sentences.length > maxSentences ? sentences.slice(0, maxSentences).join(" ") + " The rest is on screen." : t;
+}
+let voice = null;
+function pickVoice() {
+  const vs = window.speechSynthesis?.getVoices() || [];
+  const prefer = ["Daniel", "Arthur", "Google UK English Male", "Oliver", "George"];
+  voice = prefer.map(n => vs.find(v => v.name.includes(n))).find(Boolean) || vs.find(v => v.lang === "en-GB") || vs.find(v => v.lang?.startsWith("en")) || null;
+}
+if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(speakable(text));
+  if (voice) u.voice = voice;
+  u.rate = 0.98; u.pitch = 0.82;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+try { $("speakReplies").checked = localStorage.getItem("brainiac.speak") === "1"; } catch {}
+$("speakReplies").addEventListener("change", () => {
+  try { localStorage.setItem("brainiac.speak", $("speakReplies").checked ? "1" : "0"); } catch {}
+  if ($("speakReplies").checked) say("Voice on.");
+});
+if (!window.speechSynthesis) { $("speakReplies").disabled = true; $("speakReplies").parentElement.title = "This browser cannot speak."; }
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if (SR) {
+  $("mic").hidden = false;
+  $("mic").addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = navigator.language || "en-GB"; rec.interimResults = true; rec.continuous = false;
+    let finalText = "";
+    rec.onresult = e => {
+      let interim = "";
+      for (const r of e.results) (r.isFinal ? (finalText = r[0].transcript) : (interim += r[0].transcript));
+      $("goal").value = finalText || interim;
+    };
+    rec.onerror = e => { $("voiceMsg").className = "form-msg err"; $("voiceMsg").textContent = e.error === "not-allowed" ? "Microphone access was refused." : `Speech input failed: ${e.error}.`; };
+    rec.onend = () => {
+      rec = null; $("mic").setAttribute("aria-pressed", "false"); $("mic").querySelector("span").textContent = "Speak";
+      if (finalText.trim()) $("directiveForm").requestSubmit();
+    };
+    $("voiceMsg").textContent = "";
+    $("mic").setAttribute("aria-pressed", "true"); $("mic").querySelector("span").textContent = "Listening… tap to stop";
+    try { rec.start(); } catch (e) { rec = null; $("voiceMsg").className = "form-msg err"; $("voiceMsg").textContent = "Speech input is not available here."; }
+  });
+} else {
+  $("voiceMsg").textContent = "Speech input needs a browser with speech recognition (Chrome, Edge or Safari).";
+}
+const myTasks = new Set();
 
 const STATE_ORDER = ["confidence", "curiosity", "strain", "satisfaction"];
 function renderMind(m) {
@@ -554,9 +749,15 @@ function approvalCard(a) {
 /* ------------------------------------------------------------- chronicle */
 function addEvents(list) {
   if (!list?.length) return;
+  const fresh = list.filter(e => e.id > lastId);
   for (const e of list) { events.push(e); lastId = Math.max(lastId, e.id); }
+  if (booted) for (const e of fresh) {
+    if (e.kind === "alert") notifyAlert(e);
+    if (e.kind === "task_end" && myTasks.has(e.task) && e.data.ok && $("speakReplies").checked) say(e.data.result);
+  }
+  renderAlerts();
   if (events.length > 1500) events = events.slice(-1500);
-  if (LIVE && list.some(e => ["task_start", "task_end", "world_created", "agent_created", "approval_request", "approval", "lesson", "journal", "affect", "playbook", "profile"].includes(e.kind))) pollState();
+  if (LIVE && list.some(e => ["task_start", "task_end", "world_created", "agent_created", "approval_request", "approval", "lesson", "journal", "affect", "playbook", "profile", "alert", "watch_created", "watch_removed", "integration"].includes(e.kind))) pollState();
   renderStream(list.length < 5);
 }
 function renderFilters() {
@@ -649,6 +850,10 @@ function renderEvent(e) {
     }
     case "playbook": { const t = el("div", "text"); t.append(el("span", "tag g", "playbook"), `${d.name.replace(/^playbook:/, "")}: ${(d.steps || []).length} steps`); body.append(t); break; }
     case "profile": { const t = el("div", "text"); t.append(el("span", "tag", "operator"), d.note || "Profile updated."); body.append(t); break; }
+    case "alert": { row.classList.add(d.severity === "warn" ? "err" : "milestone"); const t = el("div", "text"); t.append(el("span", "tag " + (d.severity === "warn" ? "r" : "y"), "alert"), `${d.watch}: ${d.message}`); body.append(t); break; }
+    case "watch_created": { const t = el("div", "text"); t.append(el("span", "tag", "watching"), `${d.name} (${d.kind})`); body.append(t); break; }
+    case "watch_removed": { const t = el("div", "text"); t.append(el("span", "tag", "unwatched"), d.id); body.append(t); break; }
+    case "integration": { const t = el("div", "text"); t.append(el("span", "tag", d.action), d.name); body.append(t); break; }
     case "cancel_requested": { const t = el("div", "text"); t.append(el("span", "tag r", "stop requested"), d.task); body.append(t); break; }
     case "approval_request": { const t = el("div", "text"); t.append(el("span", "tag r", "needs approval"), d.tool); body.append(t); break; }
     case "approval": { const t = el("div", "text"); t.append(el("span", "tag " + (d.allow ? "g" : "r"), d.allow ? "allowed" : "denied"), d.tool); body.append(t); break; }
@@ -667,6 +872,7 @@ $("directiveForm").addEventListener("submit", async ev => {
   $("issue").disabled = true;
   try {
     const r = await api("/api/directive", { goal, world });
+    myTasks.add(r.task);
     msg.className = "form-msg ok"; msg.textContent = `Directive ${r.task} issued to ${world ? worldName(world) : "Brainiac"}.`;
     $("goal").value = ""; pollState();
   } catch (e) { msg.className = "form-msg err"; msg.textContent = e.message; }
@@ -736,5 +942,20 @@ function drawBottles(t) {
   }
   if (!reduceMotion) requestAnimationFrame(drawBottles);
 }
-connect().then(() => requestAnimationFrame(drawBottles));
+let booted = false;
+connect().then(() => { booted = true; requestAnimationFrame(drawBottles); });
+
+$("demoHome").addEventListener("click", () => post("/api/integrations/demo", {}, $("intMsg"), "Demo smart-home connected. Try: turn the lab lights on."));
+$("intForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const body = { name: $("iName").value.trim(), command: $("iCommand").value.trim(), url: $("iUrl").value.trim(), token: $("iToken").value, trusted: $("iTrusted").checked };
+  if (await post("/api/integrations", body, $("intMsg"), `${body.name} connected.`)) $("intForm").reset();
+});
+$("watchForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const kind = $("wKind").value, t = $("wTarget").value.trim();
+  const body = { kind, name: $("wNameW").value.trim(), every_minutes: Number($("wEvery").value) || 1, at: $("wAt").value.trim(),
+    target: kind === "file" ? t : "", instruction: kind === "file" ? "" : t };
+  if (await post("/api/watches", body, $("watchMsg"), "Watch added.")) $("watchForm").reset();
+});
 </script>
