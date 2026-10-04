@@ -110,6 +110,17 @@ python -m brainiac teach notes/ --world orrery
 not retrain model weights. How well it performs depends on what it has been taught and what it
 has catalogued.
 
+## Jarvis-readiness evaluations
+
+`evals/PROTOCOLS.md` defines 22 test protocols in three tiers (Foundation, Assistant, Jarvis-class)
+that measure how close Brainiac is to a Jarvis-class assistant. `evals/BASELINE.md` records where
+it stands today and the roadmap that follows from it.
+
+```bash
+python -m brainiac.evals gaps          # capabilities and runnable protocols (free)
+python -m brainiac.evals run --tier 1  # live run against the API; writes a scorecard
+```
+
 ## Tests
 
 ```bash
@@ -130,7 +141,9 @@ brainiac/
   console.html   the command console
   render.py      documents, pixel art, SVG
   cli.py         python -m brainiac ...
+  evals/         Jarvis-readiness protocols, graders and runner
 knowledge/       curricula (game-design/ is the first)
+evals/           protocol guide and baseline report
 misfires/        unintended outputs kept for reference, not part of the agent
 tests/
 ```
