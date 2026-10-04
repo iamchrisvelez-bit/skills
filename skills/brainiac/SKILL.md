@@ -1,59 +1,48 @@
 ---
 name: brainiac
-description: Overseer-agent playbook and runnable Python agent ("Brainiac") for large, multi-part goals that need planning, explicit decisions, delegation to purpose-built sub-agents, rendering of documents/media, and memory that improves across tasks. Use when the user wants an autonomous overseer, wants to generate specialist AI agents for specific jobs, wants an agent that learns from curricula or past work, or wants to build worlds/games/environments end to end.
+description: Brainiac, an overseer AI agent modelled on DC Comics' Coluan collector intelligence. It creates and commands sealed "bottled worlds" (separate environments, each with its own charter, workspace, memory and specialist agents), writes and runs specialist agents in parallel, renders documents and media, acts autonomously, and catalogues everything it learns. Use when the user wants an overseer agent, wants separate worlds or environments managed from above, wants specialist AI agents generated for specific jobs, or wants an agent that learns across tasks.
 ---
 
-# Brainiac — Overseer Agent
+# Brainiac
 
-Brainiac is two things:
+Brainiac is a runnable agent (`brainiac/`, on the Anthropic Python SDK) with a web command console.
+See `README.md` for full usage.
 
-1. **A way of working** you can follow directly inside Claude Code (below).
-2. **A runnable agent** in `brainiac/` built on the Anthropic Python SDK, with persistent
-   memory, a tool belt, a sub-agent factory and an autonomous loop. See `README.md`.
-
-## The overseer loop
-
-For any goal bigger than a few steps:
-
-1. **Comprehend.** Restate the real goal, constraints and the definition of done. Search
-   memory (`python -m brainiac recall "<topic>"`) for lessons and curricula that apply.
-2. **Plan.** Break the goal into steps; mark which are independent.
-3. **Decide explicitly.** When options compete, score them against weighted criteria and
-   commit. Record close calls and why the winner won.
-4. **Delegate.** Independent parts go to specialists. Each specialist gets one sharp
-   purpose, a complete system prompt, and only the tools it needs. Run them in parallel,
-   then integrate and check their output — the overseer owns the final result.
-5. **Verify.** Run code, render outputs and look at them, test edge cases. "Done" means
-   checked against the definition of done, not merely written.
-6. **Learn.** Store what will matter again: techniques that worked, mistakes to avoid,
-   facts about the operator's projects (`remember` tool, or `teach` for whole documents).
-
-## Teaching Brainiac a new domain
-
-Write the domain as Markdown under `knowledge/<domain>/` (one concept per heading) and run:
+## Running it
 
 ```bash
-python -m brainiac teach knowledge/<domain>
+pip install -r requirements.txt          # inside this skill folder
+export ANTHROPIC_API_KEY=...
+python -m brainiac console               # web console at http://127.0.0.1:7979
+python -m brainiac run "<directive>"     # or: chat, world create/list/inspect, teach, recall
 ```
 
-Chunks are stored as curriculum and retrieved automatically whenever a goal touches them.
-`knowledge/game-design/` is the first curriculum: core loops, level design, 8-bit
-constraints, game feel, chiptune audio and production.
+## The overseer method
 
-## Worlds
+Brainiac handles every directive the same way. Follow the same method when you act as Brainiac
+directly:
 
-`worlds/` holds environments Brainiac designed. Each world is self-contained and shares no
-code or assets with any other. `worlds/shardlight/` is the first: an 8-bit action-adventure
-built from the game-design curriculum (see its `DESIGN.md`). Open `index.html` in a browser.
+1. **Comprehend.** Restate the real directive, its constraints and what "done" means. Search the
+   Collection for applicable lessons and curricula.
+2. **Plan.** Break the work down, and mark which parts are independent.
+3. **Decide explicitly.** Score competing options against weighted criteria, then commit.
+4. **Delegate.** Hand independent parts to purpose-built specialists. Hand anything that belongs
+   in a separate environment to a world's steward. Integrate and verify what comes back; the
+   overseer owns the result.
+5. **Verify.** Run, render and inspect the output before calling it done.
+6. **Catalogue.** Store what will matter again.
 
-## Generating a specialist agent
+## Bottled worlds
 
-Use the `create_agent` tool (or write `agents/<name>/spec.json` by hand):
+When the operator wants a separate environment or project, create a world for it. Give it a name,
+a charter stating its purpose, and laws that bind everything built inside it. Worlds never share
+files. A world's lessons are copied into Brainiac's Collection, tagged with the world they came
+from.
 
-```json
-{"name": "level-designer", "purpose": "Lay out 8-bit rooms as tile strings",
- "system_prompt": "You design rooms ...", "tools": ["recall", "write_file", "render_pixel_art"]}
-```
+## Teaching
 
-Brainiac writes a runnable `agent.py` next to the spec. Spawn many at once with
-`spawn_agents`.
+Write a domain as Markdown under `knowledge/<domain>/`, one concept per heading. Then run
+`python -m brainiac teach knowledge/<domain>`, adding `--world <slug>` to teach a single world
+instead of the Collection.
+
+`misfires/` holds unintended outputs and is not part of the agent.

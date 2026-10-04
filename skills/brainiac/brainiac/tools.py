@@ -1,8 +1,10 @@
 """Brainiac's tool belt.
 
-Each tool declares a risk level. `safe` tools always run; `write` and
-`execute` tools need either autonomous mode or a yes from the approver
-callback. All file access is confined to the workspace directory.
+A ToolBox is bound to one workspace and one memory: Brainiac's core, or a
+single bottled world. File access cannot leave that workspace, so worlds stay
+sealed from each other. Each tool declares a risk level: `safe` tools always
+run; `write` and `execute` tools need autonomous mode or a yes from the
+approver. Every call is recorded in the Chronicle.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from . import render
 from .memory import MemoryStore
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
     from .config import Config
 
 Approver = Callable[[str, dict], bool]
+Emit = Callable[[str, object], None]
 MAX_OUTPUT = 12000
 
 
@@ -37,31 +40,38 @@ class Tool:
         return {"name": self.name, "description": self.description, "input_schema": self.schema}
 
 
-def _obj(props: dict, required: list[str] | None = None) -> dict:
-    return {"type": "object", "properties": props, "required": required or list(props)}
+def obj(props: dict, required: list[str] | None = None) -> dict:
+    return {"type": "object", "properties": props, "required": list(props) if required is None else required}
 
 
 S = {"type": "string"}
 I = {"type": "integer"}
+BASE_TOOLS = ("recall", "remember", "update_plan", "decide", "list_files", "read_file", "write_file",
+              "run_python", "render_document", "render_pixel_art", "render_svg")
 
 
 @dataclass
 class ToolBox:
     config: "Config"
     memory: MemoryStore
+    workspace: Path
     approver: Approver | None = None
     allowed: set[str] | None = None  # None = every tool
-    plan: list[dict] = field(default_factory=list)
-    # Set by the overseer so spawn_agents can launch sub-agents.
+    extra: list[Tool] = field(default_factory=list)  # owner-specific tools (world management, etc.)
+    emit: Emit = lambda kind, data: None
     spawner: Callable[[list[dict]], list[dict]] | None = None
+    plan: list[dict] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        self.workspace = Path(self.workspace).resolve()
+        self.workspace.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------- plumbing
     def _path(self, rel: str) -> Path:
-        root = self.config.workspace
-        p = (root / rel).resolve()
-        if p != root and root not in p.parents:
-            raise PermissionError(f"{rel!r} is outside the workspace")
+        p = (self.workspace / rel).resolve()
+        if p != self.workspace and self.workspace not in p.parents:
+            raise PermissionError(f"{rel!r} is outside this workspace")
         return p
 
     def _approve(self, tool: Tool, args: dict) -> bool:
@@ -69,23 +79,22 @@ class ToolBox:
             return True
         if self.approver is None:
             return False
-        with self._lock:  # one prompt at a time when sub-agents run in parallel
+        with self._lock:  # one prompt at a time when specialists run in parallel
             return self.approver(tool.name, args)
 
     def tools(self) -> list[Tool]:
         every = [
             Tool("recall", "Search long-term memory (lessons, facts, curricula) for anything relevant. "
-                 "Use before starting unfamiliar work.",
-                 _obj({"query": S, "k": I}, ["query"]), self.recall),
-            Tool("remember", "Store a durable fact, lesson or reusable skill in long-term memory.",
-                 _obj({"content": S, "topic": S, "kind": {"type": "string", "enum": ["fact", "lesson", "skill"]}},
-                      ["content", "topic"]), self.remember),
-            Tool("update_plan", "Replace the current task plan. Each step has a title and a status of "
-                 "todo, doing, done or blocked. Keep it current while working.",
-                 _obj({"steps": {"type": "array", "items": _obj({"title": S, "status": S})}}), self.update_plan),
+                 "Use before starting unfamiliar work.", obj({"query": S, "k": I}, ["query"]), self.recall),
+            Tool("remember", "Catalogue a durable fact, lesson or reusable skill in long-term memory.",
+                 obj({"content": S, "topic": S, "kind": {"type": "string", "enum": ["fact", "lesson", "skill"]}},
+                     ["content", "topic"]), self.remember),
+            Tool("update_plan", "Replace the current plan. Each step has a title and a status of todo, doing, "
+                 "done or blocked. Keep it current while working.",
+                 obj({"steps": {"type": "array", "items": obj({"title": S, "status": S})}}), self.update_plan),
             Tool("decide", "Score options against weighted criteria and return a ranked decision. Use for any "
                  "non-trivial choice so the reasoning is explicit and auditable.",
-                 _obj({
+                 obj({
                      "question": S,
                      "criteria": {"type": "object", "description": "criterion -> weight (any positive number)",
                                   "additionalProperties": {"type": "number"}},
@@ -93,34 +102,36 @@ class ToolBox:
                                 "additionalProperties": {"type": "object", "additionalProperties": {"type": "number"}}},
                  }), self.decide),
             Tool("list_files", "List files in the workspace (or a sub-directory of it).",
-                 _obj({"path": S}, []), self.list_files),
-            Tool("read_file", "Read a text file from the workspace.", _obj({"path": S}), self.read_file),
+                 obj({"path": S}, []), self.list_files),
+            Tool("read_file", "Read a text file from the workspace.", obj({"path": S}), self.read_file),
             Tool("write_file", "Create or overwrite a text file in the workspace.",
-                 _obj({"path": S, "content": S}), self.write_file, risk="write"),
-            Tool("run_python", "Run a Python script in the workspace and return stdout/stderr. Use it to "
-                 "test code, compute, transform data or verify assumptions.",
-                 _obj({"code": S, "timeout": I}, ["code"]), self.run_python, risk="execute"),
+                 obj({"path": S, "content": S}), self.write_file, risk="write"),
+            Tool("run_python", "Run a Python script in the workspace and return stdout/stderr. Use it to test "
+                 "code, compute, transform data or verify assumptions.",
+                 obj({"code": S, "timeout": I}, ["code"]), self.run_python, risk="execute"),
             Tool("render_document", "Render Markdown into a finished document (html, pdf or md).",
-                 _obj({"title": S, "markdown": S, "filename": S,
-                       "format": {"type": "string", "enum": ["html", "pdf", "md"]}}, ["title", "markdown", "filename"]),
+                 obj({"title": S, "markdown": S, "filename": S,
+                      "format": {"type": "string", "enum": ["html", "pdf", "md"]}}, ["title", "markdown", "filename"]),
                  self.render_document, risk="write"),
-            Tool("render_pixel_art", "Render a sprite/tile to PNG. `rows` are equal-length strings of palette "
-                 "keys; '.' is transparent. `palette` maps each key to a #rrggbb colour.",
-                 _obj({"filename": S, "rows": {"type": "array", "items": S},
-                       "palette": {"type": "object", "additionalProperties": S}, "scale": I},
-                      ["filename", "rows", "palette"]), self.render_pixel_art, risk="write"),
+            Tool("render_pixel_art", "Render a sprite/tile to PNG. `rows` are equal-length strings of palette keys; "
+                 "'.' is transparent. `palette` maps each key to a #rrggbb colour.",
+                 obj({"filename": S, "rows": {"type": "array", "items": S},
+                      "palette": {"type": "object", "additionalProperties": S}, "scale": I},
+                     ["filename", "rows", "palette"]), self.render_pixel_art, risk="write"),
             Tool("render_svg", "Save an SVG drawing (diagram, illustration, chart) to the workspace.",
-                 _obj({"filename": S, "svg": S}), self.render_svg, risk="write"),
-            Tool("create_agent", "Design a new specialist AI agent: writes its spec and a runnable Python "
-                 "entry point under agents/<name>/. Give it a sharp purpose, a full system prompt and only "
-                 "the tools it needs.",
-                 _obj({"name": S, "purpose": S, "system_prompt": S,
-                       "tools": {"type": "array", "items": S}}), self.create_agent, risk="write"),
+                 obj({"filename": S, "svg": S}), self.render_svg, risk="write"),
+            Tool("create_agent", "Design a new specialist AI agent: writes its spec and a runnable Python entry "
+                 "point under agents/<name>/. Give it a sharp purpose, a complete system prompt and only the "
+                 "tools it needs.",
+                 obj({"name": S, "purpose": S, "system_prompt": S, "tools": {"type": "array", "items": S}}),
+                 self.create_agent, risk="write"),
             Tool("spawn_agents", "Run one or more specialist agents in parallel and collect their results. "
                  "Each job is {agent, task}. Use for independent sub-problems.",
-                 _obj({"jobs": {"type": "array", "items": _obj({"agent": S, "task": S})}}),
+                 obj({"jobs": {"type": "array", "items": obj({"agent": S, "task": S})}}),
                  self.spawn_agents, risk="execute"),
-        ]
+        ] + self.extra
+        if self.spawner is None:
+            every = [t for t in every if t.name != "spawn_agents"]
         if self.allowed is not None:
             every = [t for t in every if t.name in self.allowed]
         return every
@@ -128,15 +139,19 @@ class ToolBox:
     def run(self, name: str, args: dict) -> tuple[str, bool]:
         """Execute a tool call. Returns (output, is_error)."""
         tool = next((t for t in self.tools() if t.name == name), None)
+        self.emit("tool", {"name": name, "input": args})
         if tool is None:
-            return f"Unknown or disallowed tool: {name}", True
-        if not self._approve(tool, args):
-            return f"The operator declined {name}. Choose another approach or ask for guidance.", True
-        try:
-            out = tool.fn(**args)
-        except Exception as exc:  # tool errors go back to the model, not up the stack
-            return f"{type(exc).__name__}: {exc}", True
-        return (out if len(out) <= MAX_OUTPUT else out[:MAX_OUTPUT] + "\n…[truncated]"), False
+            out, err = f"Unknown or disallowed tool: {name}", True
+        elif not self._approve(tool, args):
+            out, err = f"The operator declined {name}. Choose another approach or ask for guidance.", True
+        else:
+            try:
+                out, err = tool.fn(**args), False
+            except Exception as exc:  # tool errors go back to the model, not up the stack
+                out, err = f"{type(exc).__name__}: {exc}", True
+        out = out if len(out) <= MAX_OUTPUT else out[:MAX_OUTPUT] + "\n…[truncated]"
+        self.emit("tool_result", {"name": name, "output": out[:2000], "error": err})
+        return out, err
 
     # ------------------------------------------------------------------ tools
     def recall(self, query: str, k: int = 6) -> str:
@@ -145,10 +160,13 @@ class ToolBox:
 
     def remember(self, content: str, topic: str, kind: str = "fact") -> str:
         mid = self.memory.remember(content, topic=topic, kind=kind)
-        return f"Stored as memory #{mid}." if mid else "Already known."
+        if mid:
+            self.emit("lesson", {"topic": topic, "kind": kind, "content": content})
+        return f"Catalogued as memory #{mid}." if mid else "Already known."
 
     def update_plan(self, steps: list[dict]) -> str:
         self.plan = steps
+        self.emit("plan", steps)
         return "\n".join(f"[{s.get('status', 'todo')}] {s.get('title', '')}" for s in steps)
 
     def decide(self, question: str, criteria: dict[str, float], scores: dict[str, dict[str, float]]) -> str:
@@ -157,14 +175,17 @@ class ToolBox:
             ((sum(opt.get(c, 0) * w for c, w in criteria.items()) / total_w, name) for name, opt in scores.items()),
             reverse=True,
         )
+        close = len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 0.5
+        self.emit("decision", {"question": question, "criteria": criteria,
+                               "ranking": [{"option": n, "score": round(s, 2)} for s, n in ranked], "close": close})
         lines = [f"Decision: {question}"] + [f"{i + 1}. {n} — {s:.2f}/10" for i, (s, n) in enumerate(ranked)]
-        if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 0.5:
+        if close:
             lines.append("Margin is under 0.5 — treat as a close call and say why the winner was chosen.")
         return "\n".join(lines)
 
     def list_files(self, path: str = ".") -> str:
         base = self._path(path)
-        files = sorted(str(p.relative_to(self.config.workspace)) for p in base.rglob("*") if p.is_file())
+        files = sorted(str(p.relative_to(self.workspace)) for p in base.rglob("*") if p.is_file())
         return "\n".join(files[:500]) or "(empty)"
 
     def read_file(self, path: str) -> str:
@@ -181,7 +202,7 @@ class ToolBox:
         script.write_text(code, encoding="utf-8")
         try:
             proc = subprocess.run(
-                [sys.executable, str(script)], cwd=self.config.workspace, capture_output=True,
+                [sys.executable, str(script)], cwd=self.workspace, capture_output=True,
                 text=True, timeout=max(1, min(timeout, 600)),
             )
         except subprocess.TimeoutExpired:
@@ -191,27 +212,27 @@ class ToolBox:
     def render_document(self, title: str, markdown: str, filename: str, format: str = "html") -> str:
         p = render.render_document(title, markdown, self._path(f"renders/{filename}"), format)
         note = " (reportlab not installed, rendered HTML instead)" if format == "pdf" and p.suffix != ".pdf" else ""
-        return f"Rendered {p.relative_to(self.config.workspace)}{note}"
+        return f"Rendered {p.relative_to(self.workspace)}{note}"
 
     def render_pixel_art(self, filename: str, rows: list[str], palette: dict[str, str], scale: int = 8) -> str:
         p = render.render_pixel_art(rows, palette, self._path(f"renders/{filename}"), scale)
-        return f"Rendered {p.relative_to(self.config.workspace)}"
+        return f"Rendered {p.relative_to(self.workspace)}"
 
     def render_svg(self, filename: str, svg: str) -> str:
         p = render.render_svg(svg, self._path(f"renders/{filename}"))
-        return f"Rendered {p.relative_to(self.config.workspace)}"
+        return f"Rendered {p.relative_to(self.workspace)}"
 
     def create_agent(self, name: str, purpose: str, system_prompt: str, tools: list[str]) -> str:
         from .agents import write_agent
 
-        valid = {t.name for t in ToolBox(self.config, self.memory).tools()} - {"spawn_agents", "create_agent"}
-        unknown = sorted(set(tools) - valid)
+        unknown = sorted(set(tools) - set(BASE_TOOLS))
         if unknown:
-            return f"Unknown tools {unknown}. Choose from {sorted(valid)}."
-        folder = write_agent(self.config.workspace, name, purpose, system_prompt, tools)
-        return f"Created agent '{name}' in {folder.relative_to(self.config.workspace)}"
+            return f"Unknown tools {unknown}. Choose from {sorted(BASE_TOOLS)}."
+        folder = write_agent(self.workspace, Path(self.memory.path), name, purpose, system_prompt, tools)
+        self.emit("agent_created", {"name": folder.name, "purpose": purpose, "tools": sorted(set(tools))})
+        return f"Created agent '{folder.name}' in {folder.relative_to(self.workspace)}"
 
     def spawn_agents(self, jobs: list[dict]) -> str:
         if self.spawner is None:
-            return "Sub-agents cannot spawn further agents."
+            return "Specialists cannot spawn further agents."
         return json.dumps(self.spawner(jobs), indent=2)

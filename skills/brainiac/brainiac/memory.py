@@ -13,7 +13,9 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import threading
 import time
+from functools import wraps
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -23,6 +25,14 @@ STOPWORDS = set(
     "a an and are as at be by can do does for from how i in is it of on or should so that the this to "
     "was what when where which who why will with you your my me we our".split()
 )
+
+
+def _locked(fn):
+    @wraps(fn)
+    def inner(self, *a, **kw):
+        with self.lock:
+            return fn(self, *a, **kw)
+    return inner
 
 
 @dataclass
@@ -38,6 +48,7 @@ class Memory:
 class MemoryStore:
     def __init__(self, path: Path | str):
         self.path = str(path)
+        self.lock = threading.RLock()
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.executescript(
             """
@@ -65,6 +76,7 @@ class MemoryStore:
         self.db.commit()
 
     # ------------------------------------------------------------------ write
+    @_locked
     def remember(self, content: str, topic: str = "general", kind: str = "fact") -> int | None:
         """Store a memory. Returns its id, or None if it was already known."""
         if kind not in KINDS:
@@ -100,6 +112,7 @@ class MemoryStore:
         return total
 
     # ------------------------------------------------------------------- read
+    @_locked
     def recall(self, query: str, k: int = 6, topic: str | None = None) -> list[Memory]:
         terms = [t for t in re.findall(r"[a-z0-9]{2,}", query.lower()) if t not in STOPWORDS]
         if not terms:
@@ -122,6 +135,7 @@ class MemoryStore:
             self.db.commit()
         return rows
 
+    @_locked
     def topics(self) -> list[tuple[str, int]]:
         return list(
             self.db.execute(
@@ -129,6 +143,7 @@ class MemoryStore:
             )
         )
 
+    @_locked
     def by_topic(self, topic: str) -> list[Memory]:
         return [
             Memory(*r)
@@ -139,12 +154,14 @@ class MemoryStore:
             )
         ]
 
+    @_locked
     def stats(self) -> dict:
         total = self.db.execute("SELECT COUNT(*) FROM memories WHERE archived = 0").fetchone()[0]
         kinds = dict(self.db.execute("SELECT kind, COUNT(*) FROM memories WHERE archived = 0 GROUP BY kind"))
         return {"total": total, "kinds": kinds, "topics": len(self.topics())}
 
     # ---------------------------------------------------------- maintenance
+    @_locked
     def replace_topic(self, topic: str, summary: str) -> int | None:
         """Archive a topic's lessons/facts and store one consolidated entry.
 

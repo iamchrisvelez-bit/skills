@@ -1,21 +1,24 @@
 # Brainiac v1
 
-An overseer AI agent: it comprehends a goal, plans, makes explicit decisions, writes and
-runs its own specialist sub-agents in parallel, renders documents and media, acts
-autonomously inside a sandboxed workspace, and keeps learning from every task.
+An AI agent modelled on Brainiac from DC Comics: a Coluan collector intelligence of the twelfth
+level. It oversees a collection of **bottled worlds**, sealed environments it creates, commands
+and studies. It plans, decides, writes and runs its own specialist agents, renders documents and
+media, acts on its own, and catalogues everything it learns so every later directive starts
+smarter.
 
 ```
-              ┌──────────────────── Brainiac (overseer) ───────────────────┐
- goal ──────▶ │ recall memory → plan → decide → act → verify → reflect     │ ──▶ result
-              │        │                     │                    │        │
-              │        ▼                     ▼                    ▼        │
-              │  long-term memory     tool belt             learns lessons │
-              │  (SQLite + FTS5)      files · python ·      back into      │
-              │                       render · decide       memory         │
-              │                            │                               │
-              │            create_agent ──▶ agents/<name>/{spec.json,agent.py}
-              │            spawn_agents ──▶ specialists run in parallel     │
-              └────────────────────────────────────────────────────────────┘
+                         ┌──────────────── BRAINIAC (overseer) ────────────────┐
+  operator ─ directive ─▶│ comprehend → plan → decide → act → verify → reflect │
+  (CLI or console)       │        ▲                                   │        │
+                         │        └──── THE COLLECTION (core memory) ◀─┘        │
+                         └───────┬───────────────────┬──────────────────┬──────┘
+                          dispatch│            dispatch│     create_agent│spawn_agents
+                     ┌────────────▼──┐     ┌──────────▼────┐   core specialists
+                     │ bottle: Orrery │     │ bottle: Ledger │
+                     │  steward       │     │  steward       │   each bottle is sealed:
+                     │  specialists   │     │  specialists   │   own charter, laws,
+                     │  memory · files│     │  memory · files│   workspace and memory
+                     └────────────────┘     └────────────────┘
 ```
 
 ## Quick start
@@ -25,54 +28,87 @@ cd skills/brainiac
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=...
 
-python -m brainiac teach knowledge/game-design         # teach it a domain
-python -m brainiac run "Design a 4-room dungeon as tile maps and render a cover image"
-python -m brainiac --autonomous run "..."              # no approval prompts
-python -m brainiac chat                                # interactive
-python -m brainiac memory                              # what it knows
-python -m brainiac recall "coyote time"                # search memory
-python -m brainiac consolidate game-design             # merge a topic's notes
-python -m brainiac agents                              # specialists it has built
+python -m brainiac console                     # the command console: http://127.0.0.1:7979
+python -m brainiac teach knowledge/game-design # add a curriculum to the Collection
+python -m brainiac run "Create a world for my tabletop campaign and draft its setting bible"
+python -m brainiac chat                        # interactive, in the terminal
 ```
 
-Everything Brainiac produces lands in `./brainiac_workspace/` (`renders/`, `agents/`, files).
+## The command console
+
+`python -m brainiac console` serves a local web interface (localhost only):
+
+- **The collection**: every bottled world drawn as a glass bottle. The motes inside it are its
+  memories, and they speed up while the world is working. Each world shows its directives,
+  files, specialists and memory count. You can seal a new world from here.
+- **Directive**: send a directive to Brainiac, or straight to one world's steward.
+- **Chronicle**: a live feed of what Brainiac is doing, newest first. It shows thoughts (in
+  Brainiac's green), plans, decisions with their scored rankings, tool calls, specialists being
+  built and deployed, and lessons being catalogued. You can filter it by world.
+- **Awaiting your approval**: in supervised mode, file writes and code execution pause here
+  until you choose Allow or Deny.
+- **Specialists**: every agent Brainiac or a steward has built, and where it lives.
+- **The Collection**: what Brainiac knows, broken down by kind and topic, with a search box.
+
+When `console.html` is opened without a running server, it shows clearly labelled example data.
+
+## Bottled worlds
+
+A world is a sealed directory under `brainiac_home/bottles/<world>/` with:
+
+- a **charter** (its purpose) and **laws** (rules everything inside must follow)
+- its own **workspace**: files, renders and its specialists in `agents/`
+- its own **memory**
+
+Brainiac creates worlds (`create_world`), surveys them (`list_worlds`, `inspect_world`), and
+commands them (`dispatch`). Each world is run by a **steward** intelligence bound to its charter.
+Directives to several worlds run in parallel. Tools inside a world cannot reach another world's
+files. What a world learns is stored in that world and also catalogued in Brainiac's Collection,
+tagged with the world it came from.
+
+```bash
+python -m brainiac world create "Orrery" --charter "A working model of a star system" --law "Every number cites its source"
+python -m brainiac world list
+python -m brainiac run --world orrery "Add a comet on a hyperbolic trajectory and render the flyby"
+python -m brainiac teach notes/ --world orrery
+```
 
 ## Capabilities
 
 | Capability | How it works |
 |---|---|
-| **Learning without a ceiling** | `memory.py`: every memory is kept (nothing is evicted); BM25 retrieval over SQLite FTS5 keeps context small however big the store grows. After each task a reflection pass extracts lessons; `teach` ingests whole curricula; `consolidate` compresses a noisy topic. |
-| **Comprehension & problem solving** | The overseer prompt forces restate → plan → decide → verify. Adaptive thinking is on, effort defaults to `high`. |
-| **Decision making** | `decide` tool: weighted-criteria scoring with a close-call warning, so choices are explicit and auditable. |
-| **Writing agents for specific tasks** | `create_agent` writes `agents/<name>/spec.json` + a runnable `agent.py`, restricted to the tools you list. |
-| **Multitasking** | `spawn_agents` runs specialists concurrently in a thread pool (cheaper `low` effort by default) and returns all results to the overseer. |
-| **Rendering media & documents** | Markdown → HTML (or PDF with `reportlab`), pixel art → PNG (pure Python), SVG. |
-| **Autonomous action** | Bounded loop (`BRAINIAC_MAX_STEPS`, default 40). `--autonomous` skips approvals; otherwise file writes and code execution ask first. |
+| **Identity** | The Brainiac persona sets the tone: precise, composed, exact about what it does not yet know. The persona controls tone only, never accuracy. |
+| **Learning without a ceiling** | Memory is never evicted. Search (BM25 over SQLite FTS5) keeps the context it loads small however large memory grows. After each directive a reflection pass catalogues lessons. `teach` ingests whole curricula, and `consolidate` compresses a topic that has become noisy. |
+| **Comprehension and problem solving** | Every directive follows comprehend → plan → decide → act → verify. Adaptive thinking is on, and effort defaults to `high`. |
+| **Decision making** | The `decide` tool scores options against weighted criteria and flags close calls. Decisions show up in the console as ranked bars. |
+| **Writing agents for specific tasks** | `create_agent` writes `agents/<name>/spec.json` and a runnable `agent.py`, restricted to the tools you list. |
+| **Multitasking** | Specialists run in parallel through `spawn_agents`, and worlds run in parallel through `dispatch`. |
+| **Rendering** | Markdown → HTML (or PDF when `reportlab` is installed), pixel art → PNG, and SVG. |
+| **Autonomous action** | Every run is bounded (`BRAINIAC_MAX_STEPS`). `--autonomous` skips approvals; otherwise risky tools ask you first, in the terminal or the console. |
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BRAINIAC_MODEL` | `claude-opus-5` | Overseer model |
-| `BRAINIAC_SUBAGENT_MODEL` | same as overseer | Specialist model |
+| `BRAINIAC_HOME` | `./brainiac_home` | Collection, Chronicle, core workspace and bottles |
+| `BRAINIAC_MODEL` | `claude-opus-5` | Model for Brainiac and the stewards |
+| `BRAINIAC_SUBAGENT_MODEL` | same as above | Model for specialists |
 | `BRAINIAC_EFFORT` / `BRAINIAC_SUBAGENT_EFFORT` | `high` / `low` | Reasoning effort |
-| `BRAINIAC_MAX_STEPS` | `40` | Tool rounds per task |
-| `BRAINIAC_WORKSPACE` | `./brainiac_workspace` | Sandbox directory |
-| `BRAINIAC_MEMORY` | `./brainiac_memory.db` | Long-term memory |
-| `BRAINIAC_AUTONOMOUS` | `0` | `1` = never ask |
+| `BRAINIAC_MAX_STEPS` | `40` | Tool rounds per directive |
+| `BRAINIAC_AUTONOMOUS` | `0` | Set to `1` to never ask for approval |
 
 ## Safety notes
 
-- File tools cannot escape the workspace directory.
-- `run_python` runs real code as your user (it is not a security sandbox). Leave autonomous
-  mode off unless the machine or container is disposable.
-- Every run is step-bounded; the loop asks for a final report when the budget runs out.
+- File tools cannot leave their workspace, so worlds stay sealed from each other and from the core.
+- `run_python` runs real code as your user. It is not a security sandbox, so keep autonomous
+  mode for disposable machines or containers.
+- The console listens on 127.0.0.1 only.
 
-## Honest limits
+## Limits
 
-"Learning infinitely" here means unbounded, persistent memory plus retrieval — Brainiac does
-not retrain model weights. Quality depends on what it has been taught and what it has
-reflected on, so teach it good curricula.
+"Learning infinitely" here means memory that grows without limit, plus retrieval. Brainiac does
+not retrain model weights. How well it performs depends on what it has been taught and what it
+has catalogued.
 
 ## Tests
 
@@ -83,8 +119,18 @@ python -m unittest discover -s tests -v   # offline; a scripted fake client stan
 ## Layout
 
 ```
-brainiac/            the agent package (config, memory, tools, render, agents, overseer, cli)
-knowledge/           curricula Brainiac can be taught (game-design/ is the first)
-worlds/shardlight/   the first world Brainiac designed — open index.html
-tests/               offline test suite
+brainiac/
+  overseer.py    Brainiac: persona, world management, dispatch, reflection
+  bottles.py     sealed worlds
+  agents.py      the agent loop and the specialist generator
+  tools.py       the tool belt (bound to one workspace and one memory)
+  memory.py      long-term memory (SQLite + FTS5)
+  chronicle.py   event log behind the console
+  console.py     local web server and JSON API
+  console.html   the command console
+  render.py      documents, pixel art, SVG
+  cli.py         python -m brainiac ...
+knowledge/       curricula (game-design/ is the first)
+misfires/        unintended outputs kept for reference, not part of the agent
+tests/
 ```

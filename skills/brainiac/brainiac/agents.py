@@ -1,5 +1,5 @@
-"""The agent loop shared by the overseer and every specialist sub-agent,
-plus the code generator that writes new specialist agents to disk."""
+"""The agent loop shared by Brainiac, world stewards and specialists, plus the
+code generator that writes new specialist agents to disk."""
 
 from __future__ import annotations
 
@@ -7,11 +7,8 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
 
-from .tools import ToolBox
-
-Listener = Callable[[str, Any], None]
+from .tools import Emit, ToolBox
 
 
 @dataclass
@@ -31,7 +28,7 @@ class AgentLoop:
     """
 
     def __init__(self, client, model: str, effort: str, system: str, toolbox: ToolBox,
-                 max_steps: int, max_tokens: int = 64000, listener: Listener | None = None):
+                 max_steps: int, max_tokens: int = 64000, emit: Emit | None = None):
         self.client = client
         self.model = model
         self.effort = effort
@@ -39,7 +36,7 @@ class AgentLoop:
         self.toolbox = toolbox
         self.max_steps = max_steps
         self.max_tokens = max_tokens
-        self.listener = listener or (lambda kind, data: None)
+        self.emit = emit or (lambda kind, data: None)
 
     def _turn(self, messages: list[dict]):
         with self.client.messages.stream(
@@ -64,7 +61,7 @@ class AgentLoop:
             stop = response.stop_reason
             for block in response.content:
                 if block.type == "text" and block.text.strip():
-                    self.listener("text", block.text)
+                    self.emit("thought", block.text)
 
             if stop == "pause_turn" and pauses < 5:
                 pauses += 1
@@ -78,9 +75,7 @@ class AgentLoop:
                 break
             results = []
             for call in calls:
-                self.listener("tool", {"name": call.name, "input": call.input})
                 output, is_error = self.toolbox.run(call.name, dict(call.input))
-                self.listener("tool_result", {"name": call.name, "output": output, "error": is_error})
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": output,
                                 "is_error": is_error})
             if steps == self.max_steps:
@@ -117,9 +112,10 @@ SPEC = json.loads((Path(__file__).parent / "spec.json").read_text())
 
 def main(task: str) -> str:
     config = Config()
-    toolbox = ToolBox(config, MemoryStore(config.memory_path), allowed=set(SPEC["tools"]))
+    toolbox = ToolBox(config, MemoryStore(SPEC["memory"]), SPEC["workspace"], allowed=set(SPEC["tools"]))
     loop = AgentLoop(anthropic.Anthropic(), config.subagent_model, config.subagent_effort,
-                     SPEC["system_prompt"], toolbox, max_steps=config.max_steps)
+                     SPEC["system_prompt"], toolbox, max_steps=config.max_steps,
+                     emit=lambda kind, data: print(data) if kind == "thought" else None)
     return loop.run(task).text
 
 
@@ -132,10 +128,12 @@ def slug(name: str) -> str:
     return SLUG.sub("-", name.lower()).strip("-") or "agent"
 
 
-def write_agent(workspace: Path, name: str, purpose: str, system_prompt: str, tools: list[str]) -> Path:
+def write_agent(workspace: Path, memory_path: Path, name: str, purpose: str, system_prompt: str,
+                tools: list[str]) -> Path:
     folder = workspace / "agents" / slug(name)
     folder.mkdir(parents=True, exist_ok=True)
-    spec = {"name": slug(name), "purpose": purpose, "system_prompt": system_prompt, "tools": sorted(set(tools))}
+    spec = {"name": slug(name), "purpose": purpose, "system_prompt": system_prompt, "tools": sorted(set(tools)),
+            "workspace": str(workspace), "memory": str(memory_path)}
     (folder / "spec.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
     (folder / "agent.py").write_text(AGENT_TEMPLATE.format(purpose=purpose.replace('"""', "'''")), encoding="utf-8")
     return folder
@@ -146,3 +144,15 @@ def load_agent(workspace: Path, name: str) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"No agent named {name!r}; create it with create_agent first")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def list_agents(workspace: Path) -> list[dict]:
+    root = workspace / "agents"
+    out = []
+    for p in sorted(root.glob("*/spec.json")) if root.exists() else []:
+        try:
+            s = json.loads(p.read_text(encoding="utf-8"))
+            out.append({k: s.get(k) for k in ("name", "purpose", "tools")})
+        except (OSError, json.JSONDecodeError):
+            continue
+    return out
