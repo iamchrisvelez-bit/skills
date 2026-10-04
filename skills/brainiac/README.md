@@ -125,6 +125,35 @@ Brainiac takes Ultron's adaptability and none of his agenda. The operator is alw
 
 Protocols JV-28 and JV-29 test this directly.
 
+## The overworld
+
+The console opens on the **Overworld**, a pixel-art map of Brainiac's station:
+
+- **Command spire (centre):** Brainiac at his post. His screens scroll while he works and rings
+  pulse while he deliberates.
+- **World rooms (corners):** one per bottled world, each with its steward's desk, its specialists'
+  desks and its glass bottle. With more than four worlds, page through them with ◀ ▶.
+- **Specialist bay (south):** Brainiac's own specialists.
+- **Archive (north):** the Collection. Books light up as it grows, and learned lessons fly in as orbs.
+- **Dock (west):** connected systems as server racks. Using one draws a beam to its rack.
+- **Watchtower (east):** watches as lamps, with a radar that turns red on an alert.
+
+Every animation comes from a real event:
+- Directives travel the corridors as packets.
+- Agents type at glowing monitors, with an icon beside them showing the tool in use (pen, gear,
+  book, globe, plug…).
+- **Creating a specialist:** Brainiac walks down from his post to the room and builds it in a beam.
+- **Deleting one:** he walks to it and fires, and it disintegrates.
+
+**Click anything** to open it in the inspector:
+- **Pause / Resume:** the agent stops at its next safe point. Anything it started pauses too.
+- **Redirect:** your instruction is delivered into its next step and takes priority over its plan.
+- **Stop:** cancels it and everything beneath it.
+- **Create a specialist** in a world or the bay, or **delete** one.
+
+The command bar under the map sends directives to Brainiac or to any world's steward. The
+**Console** tab keeps the detailed panels.
+
 ## The command console
 
 `python -m brainiac console` serves a local web interface (localhost only):
@@ -246,6 +275,7 @@ brainiac/
   app.py         desktop app: window, single instance, quit, start at login
   keys.py        API key in the Keychain; client that waits for a key
   runtime.py     source vs packaged-app differences
+  runs.py        live runs: pause, resume, operator notes, stop (cascading)
   icon.py        the app icon, drawn in code
 packaging/macos/ Brainiac.app build (PyInstaller spec, launcher, build.sh)
   bottles.py     sealed worlds

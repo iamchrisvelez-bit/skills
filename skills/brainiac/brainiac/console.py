@@ -21,6 +21,9 @@ API
   POST /api/integrations        {"name", "command": "program args…"} or {"name", "url", "token", "trusted"}
   POST /api/integrations/remove {"name"}
   POST /api/integrations/demo   connect the demo smart-home
+  POST /api/runs/<action>       pause | resume | stop | note — {"id": "<run id>", "text": "…" (note only)}
+  POST /api/agents/create       {"name", "purpose", "system_prompt", "tools": [...], "world": slug | null}
+  POST /api/agents/delete       {"name", "world": slug | null}
   POST /api/key                 {"key": "sk-ant-…"}: verify and store in the Keychain (never returned)
   POST /api/shutdown            stop Brainiac (the app's Quit)
   GET  /api/health              {"app": "brainiac"}: lets a second launch find the running one
@@ -175,8 +178,11 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 self.end_headers()
                 self.wfile.write(html)
             elif url.path == "/api/state":
+                from .tools import BASE_TOOLS
+
                 self._json({**brainiac.status(), "approvals": approvals.list(), "live": True,
-                            "mind": brainiac.mind.snapshot(), "profile": brainiac.profile(), "key": keys.status()})
+                            "mind": brainiac.mind.snapshot(), "profile": brainiac.profile(), "key": keys.status(),
+                            "agent_tools": list(BASE_TOOLS)})
             elif url.path == "/api/health":
                 self._json({"app": "brainiac", "home": str(brainiac.config.home)})
             elif url.path == "/manifest.webmanifest":
@@ -257,6 +263,33 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 from .runtime import demo_home_command
 
                 self._json(brainiac.connect("home", command=demo_home_command()))
+            elif url.path.startswith("/api/runs/"):
+                action, rid = url.path.rsplit("/", 1)[-1], body.get("id", "")
+                if action == "pause":
+                    ok = bool(brainiac.pause_run(rid))
+                elif action == "resume":
+                    ok = bool(brainiac.resume_run(rid))
+                elif action == "stop":
+                    ok = brainiac.stop_run(rid)
+                elif action == "note":
+                    ok = brainiac.note_run(rid, body.get("text", ""))
+                else:
+                    return self._json({"error": "unknown action"}, 404)
+                self._json({"ok": ok}, 200 if ok else 409)
+            elif url.path == "/api/agents/create":
+                try:
+                    info = brainiac.create_specialist(body.get("name", ""), body.get("purpose", ""),
+                                                      body.get("system_prompt", ""), body.get("tools") or [],
+                                                      body.get("world") or None)
+                except (ValueError, FileNotFoundError) as exc:
+                    return self._json({"error": str(exc)}, 400)
+                self._json(info)
+            elif url.path == "/api/agents/delete":
+                try:
+                    ok = brainiac.delete_specialist(body.get("name", ""), body.get("world") or None)
+                except FileNotFoundError as exc:
+                    return self._json({"error": str(exc)}, 404)
+                self._json({"ok": ok}, 200 if ok else 404)
             elif url.path == "/api/key":
                 key = (body.get("key") or "").strip()
                 try:

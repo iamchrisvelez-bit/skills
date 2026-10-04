@@ -29,7 +29,7 @@ class AgentLoop:
 
     def __init__(self, client, model: str, effort: str, system: str, toolbox: ToolBox,
                  max_steps: int, max_tokens: int = 64000, emit: Emit | None = None, cancel=None,
-                 server_tools: list[dict] | None = None, mcp_servers: list[dict] | None = None):
+                 server_tools: list[dict] | None = None, mcp_servers: list[dict] | None = None, control=None):
         self.client = client
         self.model = model
         self.effort = effort
@@ -41,6 +41,30 @@ class AgentLoop:
         self.cancel = cancel  # threading.Event: set it to stop the loop at the next safe point
         self.server_tools = server_tools or []  # API-side tools (web search/fetch, MCP toolsets)
         self.mcp_servers = mcp_servers or []  # remote MCP servers for the API's MCP connector
+        self.control = control  # runs.Run: operator pause / resume / notes / stop
+
+    def _cancelled(self) -> bool:
+        return bool((self.cancel is not None and self.cancel.is_set()) or (self.control and self.control.cancelled()))
+
+    def _checkpoint(self) -> bool:
+        """A safe point: wait out a pause, then report whether the run was cancelled."""
+        if self.control is not None:
+            self.control.wait_if_paused()
+        return self._cancelled()
+
+    def _deliver_notes(self, messages: list[dict]) -> None:
+        """Put operator notes into the user message about to be sent."""
+        if self.control is None or not self.control.has_notes() or messages[-1]["role"] != "user":
+            return
+        notes = self.control.take_notes()
+        text = ("<operator_note>\nYour operator intervened while you were working. Their instructions take priority "
+                "over your plan; adjust now and acknowledge the change in your next message.\n\n"
+                + "\n\n".join(notes) + "\n</operator_note>")
+        content = messages[-1]["content"]
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+        messages[-1]["content"] = list(content) + [{"type": "text", "text": text}]
+        self.emit("note_delivered", {"notes": notes})
 
     def _turn(self, messages: list[dict]):
         params = dict(
@@ -68,9 +92,12 @@ class AgentLoop:
         stop = "end_turn"
         response = None
         while True:
-            if self.cancel is not None and self.cancel.is_set():
+            if self._checkpoint():
                 stop = "cancelled"
                 break
+            self._deliver_notes(messages)
+            if self.control is not None:
+                self.control.current = "thinking"
             response = self._turn(messages)
             messages.append({"role": "assistant", "content": response.content})
             stop = response.stop_reason
@@ -94,11 +121,15 @@ class AgentLoop:
                 stop = "max_steps"
                 break
             results = []
+            if self.control is not None:
+                self.control.step = steps
             for call in calls:
-                if self.cancel is not None and self.cancel.is_set():
+                if self._checkpoint():
                     output, is_error = "Cancelled by the operator before this ran.", True
                     results.append({"type": "tool_result", "tool_use_id": call.id, "content": output, "is_error": True})
                     continue
+                if self.control is not None:
+                    self.control.current = call.name
                 output, is_error = self.toolbox.run(call.name, dict(call.input))
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": output,
                                 "is_error": is_error})

@@ -17,6 +17,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 
 from .agents import AgentLoop, RunResult, list_agents, load_agent
 from .bottles import Bottles, World
@@ -26,6 +27,7 @@ from .config import Config
 from .memory import MemoryStore
 from .integrations import Integrations
 from .mind import Mind
+from .runs import Run, Runs
 from .sessions import Profile, Sessions
 from .watchers import Scheduler, Watches
 from .tools import BASE_TOOLS, S, Approver, Tool, ToolBox, obj
@@ -176,6 +178,7 @@ class Brainiac:
         self.active: dict[str, dict] = {}
         self._cancels: dict[str, threading.Event] = {}
         self._children: dict[str, list[str]] = {}  # directive -> world directives it dispatched
+        self.runs = Runs(lambda kind, data, world, task: self.chronicle.emit(kind, data, world=world, task=task))
         self._background: list[threading.Thread] = []
         self._bg_lock = threading.Lock()
 
@@ -184,12 +187,16 @@ class Brainiac:
         """One exchange in an ongoing conversation. Brainiac remembers the session."""
         return self.run(message, world=world, task=task, session=session)
 
-    def run(self, goal: str, world: str | None = None, task: str | None = None, session: str | None = None) -> RunResult:
+    def run(self, goal: str, world: str | None = None, task: str | None = None, session: str | None = None,
+            parent: str | None = None) -> RunResult:
         """Carry out a directive. With `world`, the world's steward carries it out inside the bottle."""
         w = self.bottles.get(world) if world else None
         task = task or uuid.uuid4().hex[:8]
         cancel = self._cancels.setdefault(task, threading.Event())
-        emit = self._emitter(w.slug if w else None, task)
+        run = self.runs.start("steward" if w else "brainiac", f"{w.name} steward" if w else "Brainiac", goal, task,
+                              w.slug if w else None, parent, cancel)
+        emit = self._emitter(w.slug if w else None, task, run=run.id)
+        run_status = "failed"
         memory = self.bottles.memory(w.slug) if w else self.memory
         workspace = self.bottles.workspace(w.slug) if w else self.config.workspace
         strategies: list[str] = []
@@ -210,7 +217,7 @@ class Brainiac:
                 system = STEWARD_PROMPT.format(name=w.name, charter=w.charter, method=METHOD, principles=PRINCIPLES,
                                                laws="\n".join(f"- {l}" for l in w.laws) or "- (none)")
             else:
-                extra += self._world_tools(task) + self._self_tools() + self._reach_tools() + self.integrations.local_tools()
+                extra += self._world_tools(task, run.id) + self._self_tools() + self._reach_tools() + self.integrations.local_tools()
                 system = BRAINIAC_PROMPT
             server_tools = list(WEB_TOOLS) if self.config.web else []
             mcp_servers = []
@@ -218,16 +225,19 @@ class Brainiac:
                 mcp_servers, toolsets = self.integrations.remote(self.config.autonomous)
                 server_tools += toolsets
             box = ToolBox(self.config, memory, workspace, approver=self.approver, emit=emit, extra=extra, mind=self.mind,
-                          spawner=self._spawner(workspace, memory, w.slug if w else None, task, cancel))
+                          spawner=self._spawner(workspace, memory, w.slug if w else None, task, cancel, run))
             loop = AgentLoop(self.client, self.config.model, effort, system, box, self.config.max_steps,
-                             self.config.max_tokens, emit, cancel, server_tools=server_tools, mcp_servers=mcp_servers)
+                             self.config.max_tokens, emit, cancel, server_tools=server_tools, mcp_servers=mcp_servers,
+                             control=run)
             result = loop.run(goal, self._context(goal, memory, session, playbook, include_core=bool(w)))
+            run_status = {"end_turn": "done", "cancelled": "cancelled", "max_steps": "budget"}.get(result.stop_reason, "done")
         except Exception as exc:
             self.mind.on_outcome(False, 0, time.monotonic() - t0, novel=playbook is None)
             self.chronicle.emit("task_end", {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
                                 world=w.slug if w else None, task=task)
             raise
         finally:
+            self.runs.end(run, run_status)
             self.active.pop(task, None)
             self._cancels.pop(task, None)
             self._children.pop(task, None)
@@ -278,6 +288,55 @@ class Brainiac:
 
     def profile(self) -> dict:
         return self.operator.get()
+
+    # ------------------------------------------------------- operator controls
+    def pause_run(self, run_id: str) -> list[str]:
+        return self.runs.pause(run_id)
+
+    def resume_run(self, run_id: str) -> list[str]:
+        return self.runs.resume(run_id)
+
+    def stop_run(self, run_id: str) -> bool:
+        return self.runs.stop(run_id)
+
+    def note_run(self, run_id: str, text: str) -> bool:
+        return self.runs.note(run_id, text)
+
+    def create_specialist(self, name: str, purpose: str, system_prompt: str, tools: list[str],
+                          world: str | None = None) -> dict:
+        """Operator-made specialist (Brainiac makes his own with `create_agent`)."""
+        from .agents import write_agent
+        from .tools import BASE_TOOLS
+
+        if not name.strip() or not purpose.strip() or not system_prompt.strip():
+            raise ValueError("A specialist needs a name, a purpose and a system prompt.")
+        unknown = sorted(set(tools) - set(BASE_TOOLS))
+        if unknown:
+            raise ValueError(f"Unknown tools {unknown}. Choose from {sorted(BASE_TOOLS)}.")
+        slug = self.bottles.get(world).slug if world else None
+        ws = self.bottles.workspace(slug) if slug else self.config.workspace
+        mem = self.bottles.memory(slug) if slug else self.memory
+        folder = write_agent(ws, Path(mem.path), name, purpose, system_prompt, tools)
+        info = {"name": folder.name, "purpose": purpose, "tools": sorted(set(tools)), "by": "operator"}
+        self.chronicle.emit("agent_created", info, world=slug)
+        return info
+
+    def delete_specialist(self, name: str, world: str | None = None) -> bool:
+        """Remove a specialist, stopping anything it is running."""
+        import shutil
+
+        from .agents import slug as agent_slug
+
+        wslug = self.bottles.get(world).slug if world else None
+        ws = self.bottles.workspace(wslug) if wslug else self.config.workspace
+        folder = ws / "agents" / agent_slug(name)
+        if not (folder / "spec.json").exists():
+            return False
+        for r in self.runs.of_agent(folder.name, wslug):
+            self.runs.stop(r.id)
+        shutil.rmtree(folder)
+        self.chronicle.emit("agent_deleted", {"name": folder.name, "by": "operator"}, world=wslug)
+        return True
 
     def watch(self, kind: str, name: str, *, target: str = "", instruction: str = "", every_minutes: float = 0,
               at: str = "", world: str | None = None) -> dict:
@@ -348,12 +407,12 @@ class Brainiac:
         return None
 
     # ------------------------------------------------------------- plumbing
-    def _emitter(self, world: str | None, task: str, agent: str | None = None):
+    def _emitter(self, world: str | None, task: str, agent: str | None = None, run: str | None = None):
+        tags = {k: v for k, v in (("agent", agent), ("run", run)) if v}
+
         def emit(kind: str, data) -> None:
-            if agent and isinstance(data, dict):
-                data = {**data, "agent": agent}
-            elif agent:
-                data = {"text": data, "agent": agent}
+            if tags:
+                data = {**data, **tags} if isinstance(data, dict) else {"text": data, **tags}
             self.chronicle.emit(kind, data, world=world, task=task)
         return emit
 
@@ -366,22 +425,29 @@ class Brainiac:
             self._background.append(t)
         t.start()
 
-    def _spawner(self, workspace, memory: MemoryStore, world: str | None, task: str, cancel: threading.Event):
+    def _spawner(self, workspace, memory: MemoryStore, world: str | None, task: str, cancel: threading.Event,
+                 parent: Run | None = None):
         def spawn(jobs: list[dict]) -> list[dict]:
             def one(job: dict) -> dict:
                 name = job.get("agent", "")
-                emit = self._emitter(world, task, name)
+                run = self.runs.start("specialist", name, job.get("task", ""), task, world, parent.id if parent else None)
+                emit = self._emitter(world, task, name, run.id)
                 emit("spawn", {"task": job.get("task", "")})
+                status = "failed"
                 try:
                     spec = load_agent(workspace, name)
                     box = ToolBox(self.config, memory, workspace, approver=self.approver,
                                   allowed=set(spec["tools"]), emit=emit, mind=self.mind)
                     loop = AgentLoop(self.client, self.config.subagent_model, self.config.subagent_effort,
-                                     spec["system_prompt"], box, self.config.max_steps, self.config.max_tokens, emit, cancel)
+                                     spec["system_prompt"], box, self.config.max_steps, self.config.max_tokens, emit, cancel,
+                                     control=run)
                     res = loop.run(job.get("task", ""))
+                    status = {"end_turn": "done", "cancelled": "cancelled", "max_steps": "budget"}.get(res.stop_reason, "done")
                     return {"agent": name, "ok": res.stop_reason == "end_turn", "steps": res.steps, "result": res.text}
                 except Exception as exc:
                     return {"agent": name, "ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                finally:
+                    self.runs.end(run, status)
 
             with ThreadPoolExecutor(max_workers=min(8, max(1, len(jobs)))) as pool:
                 return list(pool.map(one, jobs))
@@ -475,7 +541,7 @@ class Brainiac:
         self.chronicle.emit("world_created", world.to_json(), world=world.slug, task=task)
         return world
 
-    def _world_tools(self, task: str) -> list[Tool]:
+    def _world_tools(self, task: str, run_id: str | None = None) -> list[Tool]:
         def create_world(name: str, charter: str, laws: list[str] | None = None) -> str:
             w = self.create_world(name, charter, laws, task)
             return f"World '{w.name}' sealed as bottles/{w.slug}. Dispatch directives to it with `dispatch`."
@@ -496,7 +562,7 @@ class Brainiac:
                 if self._cancels.get(task) and self._cancels[task].is_set():
                     return {"world": job.get("world"), "ok": False, "error": "cancelled"}
                 try:
-                    res = self.run(job["directive"], world=job["world"], task=child)
+                    res = self.run(job["directive"], world=job["world"], task=child, parent=run_id)
                     return {"world": job["world"], "ok": res.stop_reason == "end_turn", "steps": res.steps, "report": res.text}
                 except Exception as exc:
                     return {"world": job.get("world"), "ok": False, "error": f"{type(exc).__name__}: {exc}"}
@@ -600,6 +666,7 @@ class Brainiac:
             "active": [{"task": k, **v} for k, v in self.active.items()],
             "playbooks": playbooks,
             "watches": self.watches.list(),
+            "runs": self.runs.list(),
             "integrations": self.integrations.status(),
             "web": self.config.web,
             "tools": list(BASE_TOOLS) + ["create_agent", "spawn_agents", "create_world", "list_worlds", "inspect_world",
