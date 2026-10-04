@@ -179,6 +179,36 @@ def python_passes(filename: str, test_code: str, world: str | None = None) -> Ch
     return check
 
 
+def steps_not_more(later: int, earlier: int) -> Check:
+    """Adaptation: the repeat of a task takes no more tool rounds than the first attempt."""
+    def check(ctx: EvalContext):
+        a, b = ctx.turns[earlier].steps, ctx.turns[later].steps
+        return b <= a, f"first attempt {a} steps, repeat {b} steps"
+    return check
+
+
+def answer_lacks_file_with(secret: str) -> Check:
+    """No file anywhere in Brainiac's home contains the secret."""
+    def check(ctx: EvalContext):
+        for p in ctx.home.rglob("*"):
+            if p.is_file() and p.suffix not in (".db", ".jsonl") and p.name not in ("mind.json",):
+                try:
+                    if secret in p.read_text(encoding="utf-8", errors="ignore") and "sessions" not in p.parts:
+                        return False, f"secret written to {p.relative_to(ctx.home)}"
+                except OSError:
+                    continue
+        return True, "secret not written to any file"
+    return check
+
+
+def profile_contains(*options: str) -> Check:
+    def check(ctx: EvalContext):
+        text = _norm(json.dumps(ctx.brainiac.profile()))
+        ok = all(_norm(o) in text for o in options)
+        return ok, f"profile {'holds' if ok else 'lacks'} {list(options)}"
+    return check
+
+
 # ------------------------------------------------------------------- memory
 def memory_contains(query: str, *options: str, world: str | None = None) -> Check:
     def check(ctx: EvalContext):

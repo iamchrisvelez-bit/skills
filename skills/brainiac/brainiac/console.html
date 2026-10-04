@@ -151,7 +151,31 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
 .recall-out { display: grid; gap: 8px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
 .recall-out article { font-size: 12.5px; background: var(--void); padding: 8px; border-radius: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .recall-out article header { font: 10.5px var(--mono); color: var(--node); margin-bottom: 4px; }
-@media (prefers-reduced-motion: reduce) { .sigil.busy circle.n { animation: none; } }
+/* ---------- mind */
+.states { display: grid; gap: 9px; }
+.state { display: grid; grid-template-columns: 86px minmax(0, 1fr) 92px; gap: 8px; align-items: center; font-size: 12.5px; }
+.state .label { color: var(--muted); }
+.state .track { height: 6px; background: var(--void); border-radius: 3px; overflow: hidden; }
+.state .fill { height: 100%; border-radius: 3px; transition: width .6s ease; }
+.state .word { font: 11px var(--mono); color: var(--text); text-align: right; }
+.state.confidence .fill { background: var(--coluan); } .state.curiosity .fill { background: var(--glass); }
+.state.strain .fill { background: var(--alert); } .state.satisfaction .fill { background: var(--node); }
+.mind-block { margin-top: 12px; display: grid; gap: 4px; }
+.mind-block h3 { margin: 0; font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mind-block p, .mind-block li { margin: 0; font-size: 13px; }
+.mind-block ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; }
+.journal { display: grid; gap: 8px; }
+.journal blockquote { margin: 0; padding-left: 10px; border-left: 2px solid var(--coluan); font-size: 13px; font-style: italic; color: var(--text); }
+.journal blockquote span { display: block; font: normal 10.5px var(--mono); color: var(--muted); margin-top: 2px; }
+.record { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 11px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 10px; }
+.record b { color: var(--text); font-weight: 500; }
+.btn.stop { border-color: var(--alert); color: var(--alert); padding: 2px 10px; font-size: 12px; justify-self: start; margin-top: 4px; }
+.effort { font: 10.5px var(--mono); color: var(--warn); }
+.ev.journal .text { font-style: italic; }
+.ev.journal .text::before { content: "Journal · "; font-style: normal; color: var(--coluan); font-weight: 500; }
+.ev.deliberation details summary { cursor: pointer; }
+.ev.deliberation pre { margin: 6px 0 0; padding: 8px; background: var(--void); border-radius: 3px; white-space: pre-wrap; font: 12px/1.5 var(--body); color: var(--text); max-height: 280px; overflow: auto; }
+@media (prefers-reduced-motion: reduce) { .sigil.busy circle.n { animation: none; } .state .fill { transition: none; } }
 </style>
 
 <div class="app">
@@ -177,6 +201,17 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
         <p class="empty" id="worldsEmpty" hidden>No worlds yet. Seal the first one below, or ask Brainiac to create one.</p>
       </div>
       <div class="panel">
+        <h2>Operator</h2>
+        <form class="stack" id="profileForm" style="margin-top:0">
+          <label for="pName">Name<input id="pName" maxlength="80" autocomplete="off"></label>
+          <label for="pAddress">How Brainiac addresses you<input id="pAddress" maxlength="40" placeholder="sir, Commander, your first name…" autocomplete="off"></label>
+          <label for="pPrefs">Preferences, one per line<textarea id="pPrefs"></textarea></label>
+          <label for="pNotes">What Brainiac has noted about you<textarea id="pNotes"></textarea></label>
+          <button class="btn node" type="submit">Save profile</button>
+          <p class="form-msg" id="profileMsg" role="status"></p>
+        </form>
+      </div>
+      <div class="panel">
         <details class="seal" id="sealBox">
           <summary>Seal a new world</summary>
           <form class="stack" id="worldForm">
@@ -193,7 +228,7 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
     <section class="col" aria-label="Directive and chronicle">
       <form class="panel composer" id="directiveForm">
         <h2>Directive <span id="activeCount"></span></h2>
-        <label for="goal">What should Brainiac do?
+        <label for="goal">Speak to Brainiac. He remembers the conversation.
           <textarea id="goal" required placeholder="Create a world for a tabletop RPG campaign, then have its steward draft the setting bible and render a map."></textarea>
         </label>
         <div class="row">
@@ -211,7 +246,15 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
       </div>
     </section>
 
-    <aside class="col side-col" aria-label="Approvals, specialists and the Collection">
+    <aside class="col side-col" aria-label="Mind, approvals, specialists and the Collection">
+      <div class="panel" id="mindPanel">
+        <h2>Mind <span id="mindAge"></span></h2>
+        <div class="states" id="states"></div>
+        <div class="mind-block"><h3>Focus</h3><p id="focus"></p></div>
+        <div class="mind-block"><h3>Holding open</h3><ul id="threads"></ul></div>
+        <div class="mind-block"><h3>Journal</h3><div class="journal" id="journal"></div></div>
+        <div class="record" id="record"></div>
+      </div>
       <div class="panel" id="approvalsPanel" hidden>
         <h2>Awaiting your approval</h2>
         <div class="list" id="approvals"></div>
@@ -223,6 +266,10 @@ ul.plan li.doing::before { content: "◐ "; color: var(--warn); } ul.plan li.blo
       <div class="panel">
         <h2>Specialists <span id="agentCount"></span></h2>
         <ul class="list" id="agents"></ul>
+      </div>
+      <div class="panel">
+        <h2>Playbooks <span id="pbCount"></span></h2>
+        <ul class="list" id="playbooks"></ul>
       </div>
       <div class="panel">
         <h2>The Collection <span id="memTotal"></span></h2>
@@ -268,13 +315,30 @@ const DEMO_STATE = {
   ],
   core_agents: [{ name: "world-architect", purpose: "Drafts charters and laws for new worlds", tools: ["recall", "decide", "write_file"] }],
   active: [{ task: "a41f09c2", goal: "Extend Orrery with a comet on a hyperbolic trajectory and render the flyby.", world: null, started: now - 38 }],
+  mind: {
+    born: now - 86400 * 9.4, directives: 31, successes: 28, failures: 3,
+    affect: { confidence: 0.78, curiosity: 0.71, strain: 0.18, satisfaction: 0.66 },
+    affect_words: { confidence: "assured", curiosity: "intent", strain: "at ease", satisfaction: "content" },
+    focus: "Extending Orrery with small-body dynamics; the comet work is close to done.",
+    open_threads: ["Orrery's Jupiter perturbations are not modelled yet", "Ledger's import script has no test for empty months", "Ask whether the Ironwood map should be hex or square"],
+    journal: [
+      { ts: now - 7200, entry: "Ledger's import failed on a semicolon file. I found the delimiter, recorded the fix, and the second import took half the steps." },
+      { ts: now - 3000, entry: "The operator asked for a status report late at night. I kept it short and suggested the rest could wait until morning." },
+      { ts: now - 60, entry: "Verlet held energy drift to 3e-8 on the flyby. I trust it now for hyperbolic orbits, and I have written that down so I stop re-checking." },
+    ],
+    strategies: { verify: { uses: 6, wins: 6 }, adversarial: { uses: 4, wins: 3 }, hypotheses: { uses: 3, wins: 3 }, premortem: { uses: 2, wins: 2 } },
+    workaround_count: 7,
+  },
+  playbooks: [{ name: "playbook:csv-total", uses: 4, wins: 4, avg_steps: 2.3 }, { name: "playbook:orbit-render", uses: 3, wins: 3, avg_steps: 5.0 }, { name: "playbook:weekly-ledger-report", uses: 2, wins: 1, avg_steps: 7.5 }],
+  profile: { name: "Example operator", address: "sir", preferences: ["Metric units", "Short answers unless I ask for detail"], notes: ["Works late on Thursdays", "Prefers diagrams over tables"] },
   approvals: [{ id: "example", tool: "write_file", args: { path: "renders/flyby-notes.md", content: "# Comet C/2026 flyby\nPerihelion 0.42 AU on day 211 ..." } }],
 };
 const DEMO_SCRIPT = [
-  ["task_start", null, { goal: "Extend Orrery with a comet on a hyperbolic trajectory and render the flyby." }],
+  ["task_start", null, { goal: "Extend Orrery with a comet on a hyperbolic trajectory and render the flyby.", effort: "high" }],
   ["thought", null, "Directive received. The comet belongs inside Orrery; the overseer's part is to brief its steward precisely and verify the report."],
   ["tool", null, { name: "inspect_world", input: { world: "orrery" } }],
   ["tool", null, { name: "recall", input: { query: "hyperbolic orbit integration energy" } }],
+  ["deliberation", null, { mode: "adversarial", problem: "Plan for adding a hyperbolic comet to Orrery", result: "Deliberation (adversarial):\nREVISED: Integrate with Velocity Verlet at dt=0.5 d, check energy drift every 50 d, render against the existing orbit layer.\nADDRESSED: RK4 drift over long spans; missing drift check; rendering scale mismatch.\nREJECTED: Switching to an adaptive integrator; unnecessary at this accuracy." }],
   ["decision", null, { question: "Integrator for the flyby", ranking: [{ option: "Velocity Verlet", score: 8.4 }, { option: "RK4", score: 7.1 }, { option: "Euler", score: 2.3 }], close: false }],
   ["tool", null, { name: "dispatch", input: { jobs: [{ world: "orrery", directive: "Add comet C/2026 with e=1.08 ..." }] } }],
   ["task_start", "orrery", { goal: "Add comet C/2026 with eccentricity 1.08; integrate with Velocity Verlet; render the flyby as SVG." }],
@@ -288,6 +352,8 @@ const DEMO_SCRIPT = [
   ["task_end", "orrery", { ok: true, steps: 9, result: "Comet added. Flyby rendered to renders/comet-flyby.svg. Energy drift 3.1e-8." }],
   ["thought", null, "Orrery reports success with energy drift 3.1e-8, inside tolerance. The flyby diagram is at bottles/orrery/workspace/renders/comet-flyby.svg. The integrator lesson is now in the Collection."],
   ["task_end", null, { ok: true, steps: 5, result: "Done." }],
+  ["journal", null, { entry: "Verlet held energy drift to 3e-8 on the flyby. I trust it now for hyperbolic orbits, and I have written that down so I stop re-checking.", focus: "Small-body dynamics in Orrery" }],
+  ["workaround", "ledger", { signature: "run_python: ValueError: could not convert string to float: <s>", hints: ["`run_python` succeeded afterwards with csv.reader(f, delimiter=';')"], recalled: true }],
 ];
 
 /* --------------------------------------------------------------- network */
@@ -304,6 +370,7 @@ async function connect() {
     LIVE = true; state = s;
     const ev = await api("/api/events");
     addEvents(ev.events);
+    renderStream();
     setInterval(pollEvents, 1000); setInterval(pollState, 3000);
   } catch {
     LIVE = false; state = structuredClone(DEMO_STATE); $("demoNote").hidden = false; startDemo();
@@ -365,6 +432,10 @@ function renderState() {
   for (const w of s.worlds) sel.append(new Option(`${w.name} (steward)`, w.slug));
   sel.value = [...sel.options].some(o => o.value === keep) ? keep : "";
 
+  renderMind(s.mind);
+  renderPlaybooks(s.playbooks || []);
+  if (!profileDirty) fillProfile(s.profile);
+
   // approvals
   const ap = $("approvals"); ap.replaceChildren();
   $("approvalsPanel").hidden = !s.approvals.length;
@@ -378,6 +449,15 @@ function renderState() {
     const li = el("li"), name = el("div", "name");
     name.append(el("span", null, a.world ? worldName(a.world) : "Brainiac"), el("small", null, a.task));
     li.append(name, el("div", "sub", a.goal));
+    if (a.effort) li.append(el("div", "effort", `effort: ${a.effort}`));
+    const stop = el("button", "btn stop", "Stop"); stop.type = "button";
+    stop.onclick = async () => {
+      if (!LIVE) { stop.replaceWith(el("div", "sub", "Example only. Stop works when connected.")); return; }
+      stop.disabled = true;
+      try { await api("/api/cancel", { task: a.task }); stop.textContent = "Stopping…"; }
+      catch (e) { stop.replaceWith(el("div", "form-msg err", e.message)); }
+    };
+    li.append(stop);
     act.append(li);
   }
 
@@ -408,6 +488,52 @@ function renderState() {
 }
 function worldName(slug) { return state?.worlds.find(w => w.slug === slug)?.name || slug; }
 
+const STATE_ORDER = ["confidence", "curiosity", "strain", "satisfaction"];
+function renderMind(m) {
+  if (!m) { $("mindPanel").hidden = true; return; }
+  $("mindPanel").hidden = false;
+  const days = (Date.now() / 1000 - m.born) / 86400;
+  $("mindAge").textContent = days < 1 ? `${Math.max(1, Math.round(days * 24))} h old` : `${days.toFixed(1)} days old`;
+  const st = $("states"); st.replaceChildren();
+  for (const k of STATE_ORDER) {
+    const v = m.affect[k] ?? 0, row = el("div", "state " + k), tr = el("div", "track"), f = el("div", "fill");
+    f.style.width = `${Math.round(v * 100)}%`; tr.append(f);
+    row.title = `${k}: ${v.toFixed(2)}`;
+    row.append(el("span", "label", k[0].toUpperCase() + k.slice(1)), tr, el("span", "word", (m.affect_words || {})[k] || v.toFixed(2)));
+    st.append(row);
+  }
+  $("focus").textContent = m.focus || "Nothing in particular yet.";
+  const th = $("threads"); th.replaceChildren();
+  if (!m.open_threads?.length) th.append(el("li", null, "Nothing open."));
+  for (const t of m.open_threads || []) th.append(el("li", null, t));
+  const j = $("journal"); j.replaceChildren();
+  const entries = (m.journal || []).slice(-3).reverse();
+  if (!entries.length) j.append(el("p", "empty", "No entries yet. He writes one after each directive."));
+  for (const e of entries) { const q = el("blockquote", null, e.entry); q.append(el("span", null, fmtTime(e.ts))); j.append(q); }
+  const rec = $("record"); rec.replaceChildren();
+  const stat = (n, label) => { const sp = el("span"); sp.append(el("b", null, String(n)), " " + label); rec.append(sp); };
+  stat(m.directives, "directives"); stat(m.successes, "succeeded"); stat(m.workaround_count ?? 0, "workarounds known");
+  const strat = Object.entries(m.strategies || {}).sort((a, b) => b[1].uses - a[1].uses).slice(0, 4);
+  for (const [mode, v] of strat) stat(`${v.wins}/${v.uses}`, mode);
+}
+function renderPlaybooks(list) {
+  const ul = $("playbooks"); ul.replaceChildren();
+  $("pbCount").textContent = String(list.length);
+  if (!list.length) ul.append(el("li", "sub", "None yet. When a directive succeeds and would repeat, he distils it into a playbook and moves faster next time."));
+  for (const p of list) {
+    const li = el("li"), name = el("div", "name");
+    name.append(el("span", null, p.name.replace(/^playbook:/, "")), el("small", null, p.uses ? `${p.wins}/${p.uses} won` : "new"));
+    li.append(name, el("div", "sub", p.avg_steps != null ? `${p.avg_steps} steps on average` : "Not used yet"));
+    ul.append(li);
+  }
+}
+let profileDirty = false;
+function fillProfile(p) {
+  if (!p) return;
+  $("pName").value = p.name || ""; $("pAddress").value = p.address || "";
+  $("pPrefs").value = (p.preferences || []).join("\n"); $("pNotes").value = (p.notes || []).join("\n");
+}
+
 function approvalCard(a) {
   const card = el("div", "approval");
   const head = el("div"); head.append(el("span", "tag r", "approval"), el("b", null, a.tool));
@@ -430,7 +556,7 @@ function addEvents(list) {
   if (!list?.length) return;
   for (const e of list) { events.push(e); lastId = Math.max(lastId, e.id); }
   if (events.length > 1500) events = events.slice(-1500);
-  if (LIVE && list.some(e => ["task_start", "task_end", "world_created", "agent_created", "approval_request", "approval", "lesson"].includes(e.kind))) pollState();
+  if (LIVE && list.some(e => ["task_start", "task_end", "world_created", "agent_created", "approval_request", "approval", "lesson", "journal", "affect", "playbook", "profile"].includes(e.kind))) pollState();
   renderStream(list.length < 5);
 }
 function renderFilters() {
@@ -445,6 +571,7 @@ function renderFilters() {
 }
 function visible(e) {
   if (e.kind === "tool_result" && !e.data?.error) return false;
+  if (e.kind === "affect") return false;
   if (filter === "all") return true;
   if (filter === "core") return !e.world;
   return e.world === filter;
@@ -493,7 +620,13 @@ function renderEvent(e) {
       const t = el("div", "text"); t.append(el("span", "tag", "plan")); body.append(t);
       const ul = el("ul", "plan"); for (const st of steps) ul.append(el("li", st.status || "todo", st.title)); body.append(ul); break;
     }
-    case "task_start": row.classList.add("milestone"); { const t = el("div", "text"); t.append(el("span", "tag", "directive"), d.goal); body.append(t); } break;
+    case "task_start": {
+      row.classList.add("milestone");
+      const t = el("div", "text"); t.append(el("span", "tag", "directive"), d.goal); body.append(t);
+      const meta = [d.effort && `effort ${d.effort}`, d.effort_reason && d.effort_reason !== "default" && d.effort_reason, d.playbook && `following ${d.playbook.replace(/^playbook:/, "")}`].filter(Boolean);
+      if (meta.length) body.append(el("div", "effort", meta.join(" · ")));
+      break;
+    }
     case "task_end": {
       row.classList.add("milestone"); if (!d.ok) row.classList.add("err");
       const t = el("div", "text"); t.append(el("span", "tag " + (d.ok ? "g" : "r"), d.ok ? "complete" : "failed"), d.ok ? `${d.steps} steps${d.stop === "max_steps" ? " (step budget reached)" : ""}` : d.error);
@@ -503,6 +636,20 @@ function renderEvent(e) {
     case "agent_created": { const t = el("div", "text"); t.append(el("span", "tag", "specialist"), `${d.name}: ${d.purpose}`); body.append(t); break; }
     case "spawn": { const t = el("div", "text"); t.append(el("span", "tag", "deployed"), d.task); body.append(t); break; }
     case "lesson": text(`[${d.topic}] ${d.content}`); break;
+    case "journal": text(d.entry); break;
+    case "deliberation": {
+      const det = el("details"), sum = el("summary"); sum.append(el("span", "tag g", d.mode), d.problem);
+      det.append(sum, el("pre", null, d.result)); body.append(det); break;
+    }
+    case "workaround": {
+      const t = el("div", "text");
+      t.append(el("span", "tag y", d.recalled ? "recognised failure" : "learned workaround"),
+        d.recalled ? (d.hints || []).join(" · ") : (d.fix || "") + (d.problem ? ` (for: ${d.problem})` : ""));
+      body.append(t); break;
+    }
+    case "playbook": { const t = el("div", "text"); t.append(el("span", "tag g", "playbook"), `${d.name.replace(/^playbook:/, "")}: ${(d.steps || []).length} steps`); body.append(t); break; }
+    case "profile": { const t = el("div", "text"); t.append(el("span", "tag", "operator"), d.note || "Profile updated."); body.append(t); break; }
+    case "cancel_requested": { const t = el("div", "text"); t.append(el("span", "tag r", "stop requested"), d.task); body.append(t); break; }
     case "approval_request": { const t = el("div", "text"); t.append(el("span", "tag r", "needs approval"), d.tool); body.append(t); break; }
     case "approval": { const t = el("div", "text"); t.append(el("span", "tag " + (d.allow ? "g" : "r"), d.allow ? "allowed" : "denied"), d.tool); body.append(t); break; }
     default: text(JSON.stringify(d));
@@ -535,6 +682,15 @@ $("worldForm").addEventListener("submit", async ev => {
     msg.className = "form-msg ok"; msg.textContent = `${w.name} sealed.`;
     $("worldForm").reset(); pollState();
   } catch (e) { msg.className = "form-msg err"; msg.textContent = e.message; }
+});
+["pName", "pAddress", "pPrefs", "pNotes"].forEach(id => $(id).addEventListener("input", () => { profileDirty = true; }));
+$("profileForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const msg = $("profileMsg"), lines = id => $(id).value.split("\n").map(x => x.trim()).filter(Boolean);
+  const body = { name: $("pName").value.trim(), address: $("pAddress").value.trim(), preferences: lines("pPrefs"), notes: lines("pNotes") };
+  if (!LIVE) { msg.className = "form-msg err"; msg.textContent = "Example data only. Connect the console to save the profile."; return; }
+  try { fillProfile(await api("/api/profile", body)); profileDirty = false; msg.className = "form-msg ok"; msg.textContent = "Saved. Brainiac uses this from the next directive."; }
+  catch (e) { msg.className = "form-msg err"; msg.textContent = e.message; }
 });
 let recallTimer;
 $("recallQ").addEventListener("input", () => { clearTimeout(recallTimer); recallTimer = setTimeout(runRecall, 300); });

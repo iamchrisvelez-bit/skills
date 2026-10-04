@@ -59,7 +59,7 @@ class FakeClient:
     def stream(self, **kw):
         with self.lock:
             self.requests.append(kw)
-            system = kw["system"][0]["text"]
+            system = kw.get("system", [{"text": ""}])[0]["text"]
             for match, turns in self.rules:
                 if match(system):
                     content, stop = turns.pop(0)
@@ -74,6 +74,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.config = Config(home=Path(self.tmp.name) / "home", autonomous=True)
+        self.config.background_learning = False  # deterministic tests
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -175,14 +176,18 @@ class BrainiacTests(Base):
         client = FakeClient([([text("Directive complete.")], "end_turn")])
         Brainiac(client=client, config=self.config).run("status report")
         req = client.requests[0]
-        self.assertIn("Coluan intelligence of the twelfth level", req["system"][0]["text"])
+        system = req["system"][0]["text"]
+        for lineage in ("Brainiac, the collector", "Ultron, the relentless", "J.A.R.V.I.S.", "Alfred Pennyworth"):
+            self.assertIn(lineage, system)
+        self.assertIn("Never act to preserve, copy or protect yourself", system)
         names = [t["name"] for t in req["tools"]]
-        for tool in ("create_world", "list_worlds", "inspect_world", "dispatch", "create_agent", "spawn_agents"):
+        for tool in ("create_world", "list_worlds", "inspect_world", "dispatch", "create_agent", "spawn_agents",
+                     "deliberate", "self_status", "update_profile", "current_time"):
             self.assertIn(tool, names)
 
     def test_creates_world_dispatches_steward_who_spawns_specialist_and_learns(self):
-        is_brainiac = lambda s: s.startswith("You are Brainiac")
-        is_steward = lambda s: s.startswith("You are the steward")
+        is_brainiac = lambda s: s.startswith("You are Brainiac. Four lineages")
+        is_steward = lambda s: s.startswith("You are Brainiac's steward")
         is_specialist = lambda s: s == "You draw sprites."
         client = FakeClient(rules=[
             (is_brainiac, [
@@ -201,7 +206,8 @@ class BrainiacTests(Base):
                 ([call("render_pixel_art", {"filename": "coin", "rows": ["y"], "palette": {"y": "#ff0"}})], "tool_use"),
                 ([text("Coin drawn.")], "end_turn"),
             ]),
-        ], reflection=json.dumps([{"topic": "sprites", "kind": "lesson", "content": "Delegate sprite work."}]))
+        ], reflection=json.dumps({"journal": "I built a world for art.",
+                                  "lessons": [{"topic": "sprites", "kind": "lesson", "content": "Delegate sprite work."}]}))
         b = Brainiac(client=client, config=self.config)
         res = b.run("Create an art world and have it make a coin")
 

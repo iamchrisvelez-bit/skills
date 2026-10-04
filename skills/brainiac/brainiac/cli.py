@@ -69,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     cs = sub.add_parser("consolidate", help="merge a topic's notes into one dense entry")
     cs.add_argument("topic")
     sub.add_parser("agents", help="list specialists in the core workspace")
+    sub.add_parser("mind", help="Brainiac's self-model, functional states and journal")
+    pr = sub.add_parser("profile", help="show or edit the operator profile")
+    pr.add_argument("--name")
+    pr.add_argument("--address", help="how Brainiac should address you")
+    pr.add_argument("--prefer", action="append", default=[], help="add a preference (repeatable)")
     a = p.parse_args(argv)
 
     config = Config(home=a.home) if a.home else Config()
@@ -96,6 +101,28 @@ def main(argv: list[str] | None = None) -> int:
 
         for s in list_agents(config.workspace):
             print(f"{BOLD}{s['name']}{RESET} — {s['purpose']}  {DIM}{', '.join(s['tools'])}{RESET}")
+    elif a.cmd == "mind":
+        from .mind import Mind
+
+        m = Mind(config.home / "mind.json")
+        print(m.describe())
+        s = m.snapshot()
+        if s["playbooks"]:
+            print("\nPlaybooks: " + ", ".join(f"{k} {v['wins']}/{v['uses']}" for k, v in s["playbooks"].items()))
+        print(f"Workarounds known: {s['workaround_count']}")
+    elif a.cmd == "profile":
+        from .sessions import Profile
+
+        prof = Profile(config.home / "operator.json")
+        p = prof.get()
+        if a.name is not None:
+            p["name"] = a.name
+        if a.address is not None:
+            p["address"] = a.address
+        p["preferences"] += a.prefer
+        if a.name is not None or a.address is not None or a.prefer:
+            p = prof.set(p)
+        print(json.dumps(p, indent=2))
     elif a.cmd == "world":
         if a.wcmd == "create":
             from .chronicle import Chronicle
@@ -130,17 +157,19 @@ def main(argv: list[str] | None = None) -> int:
             print(b.consolidate(a.topic))
         elif a.cmd == "run":
             res = b.run(" ".join(a.goal), world=a.world)
-            print(f"\n{DIM}— {res.steps} steps, {res.stop_reason}{RESET}")
+            print(f"\n{DIM}— {res.steps} steps, {res.stop_reason}. Reflecting…{RESET}")
+            b.wait_idle()
         elif a.cmd == "chat":
             print(f"{BOLD}Brainiac online.{RESET} {DIM}Home: {config.home}  (Ctrl-D to exit){RESET}")
             while True:
                 try:
                     goal = input(f"\n{BOLD}directive › {RESET}").strip()
                 except EOFError:
-                    print()
+                    print(f"\n{DIM}Reflecting before shutdown…{RESET}")
+                    b.wait_idle()
                     return 0
                 if goal:
-                    b.run(goal, world=a.world)
+                    b.converse(goal, session="cli", world=a.world)
     return 0
 
 

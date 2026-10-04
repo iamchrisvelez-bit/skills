@@ -13,6 +13,9 @@ API
   POST /api/directive           {"goal": "...", "world": "<slug>" | null}
   POST /api/worlds              {"name": "...", "charter": "...", "laws": ["..."]}
   POST /api/approve             {"id": "<approval id>", "allow": true|false}
+  POST /api/cancel              {"task": "<task id>"}: stop a running directive
+  GET  /api/mind                Brainiac's self-model, functional states, journal and adaptation records
+  GET  /api/profile             the operator profile;  POST /api/profile replaces it
 """
 
 from __future__ import annotations
@@ -113,7 +116,12 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 self.end_headers()
                 self.wfile.write(html)
             elif url.path == "/api/state":
-                self._json({**brainiac.status(), "approvals": approvals.list(), "live": True})
+                self._json({**brainiac.status(), "approvals": approvals.list(), "live": True,
+                            "mind": brainiac.mind.snapshot(), "profile": brainiac.profile()})
+            elif url.path == "/api/mind":
+                self._json(brainiac.mind.snapshot())
+            elif url.path == "/api/profile":
+                self._json(brainiac.profile())
             elif url.path == "/api/events":
                 after = int(q.get("after", "0") or 0)
                 events = brainiac.chronicle.since(after) if after else brainiac.chronicle.recent(200)
@@ -141,7 +149,7 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
 
                 def work():
                     try:
-                        brainiac.run(goal, world=world, task=task)
+                        brainiac.converse(goal, session="console", world=world, task=task)
                     except Exception:
                         pass  # the failure is already in the Chronicle as task_end ok=false
 
@@ -153,6 +161,11 @@ def serve(brainiac, approvals: Approvals, host: str = "127.0.0.1", port: int = 7
                 except (FileExistsError, ValueError) as exc:
                     return self._json({"error": str(exc)}, 409)
                 self._json(w.to_json())
+            elif url.path == "/api/cancel":
+                ok = brainiac.cancel(body.get("task", ""))
+                self._json({"ok": ok}, 200 if ok else 404)
+            elif url.path == "/api/profile":
+                self._json(brainiac.operator.set(body))
             elif url.path == "/api/approve":
                 ok = approvals.answer(body.get("id", ""), bool(body.get("allow")))
                 self._json({"ok": ok}, 200 if ok else 404)

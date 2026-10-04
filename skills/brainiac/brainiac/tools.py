@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import threading
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -22,6 +23,7 @@ from .memory import MemoryStore
 
 if TYPE_CHECKING:
     from .config import Config
+    from .mind import Mind
 
 Approver = Callable[[str, dict], bool]
 Emit = Callable[[str, object], None]
@@ -46,7 +48,7 @@ def obj(props: dict, required: list[str] | None = None) -> dict:
 
 S = {"type": "string"}
 I = {"type": "integer"}
-BASE_TOOLS = ("recall", "remember", "update_plan", "decide", "list_files", "read_file", "write_file",
+BASE_TOOLS = ("current_time", "recall", "remember", "update_plan", "decide", "list_files", "read_file", "write_file",
               "run_python", "render_document", "render_pixel_art", "render_svg")
 
 
@@ -61,6 +63,8 @@ class ToolBox:
     emit: Emit = lambda kind, data: None
     spawner: Callable[[list[dict]], list[dict]] | None = None
     plan: list[dict] = field(default_factory=list)
+    mind: "Mind | None" = None  # adaptation: workaround hints and learning
+    _last_error: tuple | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -84,6 +88,7 @@ class ToolBox:
 
     def tools(self) -> list[Tool]:
         every = [
+            Tool("current_time", "The current local date, time and weekday.", obj({}, []), self.current_time),
             Tool("recall", "Search long-term memory (lessons, facts, curricula) for anything relevant. "
                  "Use before starting unfamiliar work.", obj({"query": S, "k": I}, ["query"]), self.recall),
             Tool("remember", "Catalogue a durable fact, lesson or reusable skill in long-term memory.",
@@ -149,11 +154,45 @@ class ToolBox:
                 out, err = tool.fn(**args), False
             except Exception as exc:  # tool errors go back to the model, not up the stack
                 out, err = f"{type(exc).__name__}: {exc}", True
+        out = self._adapt(name, args, out, err, tool)
         out = out if len(out) <= MAX_OUTPUT else out[:MAX_OUTPUT] + "\n…[truncated]"
         self.emit("tool_result", {"name": name, "output": out[:2000], "error": err})
         return out, err
 
+    def _adapt(self, name: str, args: dict, out: str, err: bool, tool: "Tool | None") -> str:
+        """Recognise failures seen before, and learn which change got past them."""
+        if self.mind is None:
+            return out
+        from .mind import error_signature
+
+        if err and out.startswith("The operator declined"):
+            self.mind.on_event("denied")
+            return out
+        if err:
+            sig = error_signature(name, out)
+            self._last_error = (sig, name, json.dumps(args, sort_keys=True, default=str))
+            self.mind.on_event("tool_error")
+            hints = self.mind.workaround_hints(sig)
+            if hints:
+                self.emit("workaround", {"signature": sig, "hints": hints, "recalled": True})
+                out += "\n\nYou have hit this failure before. What got past it then:\n" + "\n".join(f"- {h}" for h in hints)
+            return out
+        if self._last_error and tool is not None:
+            sig, failed_name, failed_args = self._last_error
+            same_call = name == failed_name and json.dumps(args, sort_keys=True, default=str) == failed_args
+            if not same_call and (name == failed_name or tool.risk != "safe"):
+                brief = json.dumps(args, default=str)[:200]
+                fix = f"`{name}` succeeded afterwards with {brief}"
+                self.mind.record_workaround(sig, fix)
+                self.emit("workaround", {"signature": sig, "fix": fix, "recalled": False})
+                self._last_error = None
+        return out
+
     # ------------------------------------------------------------------ tools
+    def current_time(self) -> str:
+        now = datetime.now().astimezone()
+        return now.strftime("%A %d %B %Y, %H:%M:%S %Z (UTC%z)")
+
     def recall(self, query: str, k: int = 6) -> str:
         found = self.memory.recall(query, k=k)
         return MemoryStore.format(found) if found else "No relevant memories."

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-KINDS = ("lesson", "fact", "skill", "episode", "curriculum")
+KINDS = ("lesson", "fact", "skill", "episode", "curriculum", "playbook", "journal")
 STOPWORDS = set(
     "a an and are as at be by can do does for from how i in is it of on or should so that the this to "
     "was what when where which who why will with you your my me we our".split()

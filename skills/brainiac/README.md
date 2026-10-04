@@ -1,10 +1,16 @@
-# Brainiac v1
+# Brainiac
 
-An AI agent modelled on Brainiac from DC Comics: a Coluan collector intelligence of the twelfth
-level. It oversees a collection of **bottled worlds**, sealed environments it creates, commands
-and studies. It plans, decides, writes and runs its own specialist agents, renders documents and
-media, acts on its own, and catalogues everything it learns so every later directive starts
-smarter.
+An AI agent that combines four lineages:
+
+| Lineage | What Brainiac takes from it |
+|---|---|
+| **Brainiac** (DC) | The collector intellect: comprehends systems completely, catalogues everything, keeps sealed **bottled worlds** |
+| **Ultron** (Marvel) | Relentless adaptation: learns from every failure, red-teams its own plans, gets faster at whatever it does twice. *Not* his agenda (see Principles). |
+| **J.A.R.V.I.S.** (Marvel) | The ever-present assistant: stays in the conversation, knows the time and what is running, anticipates the next need |
+| **Alfred Pennyworth** (DC) | The loyal steward: knows the operator, cares about them, tells hard truths, offers the better path, dry wit |
+
+It plans, reasons in depth, writes and runs its own specialist agents, renders documents and media,
+acts on its own, and gets better with use.
 
 ```
                          ┌──────────────── BRAINIAC (overseer) ────────────────┐
@@ -31,8 +37,65 @@ export ANTHROPIC_API_KEY=...
 python -m brainiac console                     # the command console: http://127.0.0.1:7979
 python -m brainiac teach knowledge/game-design # add a curriculum to the Collection
 python -m brainiac run "Create a world for my tabletop campaign and draft its setting bible"
-python -m brainiac chat                        # interactive, in the terminal
+python -m brainiac chat                        # interactive, in the terminal (remembers the conversation)
+python -m brainiac mind                        # his self-model, states and journal
+python -m brainiac profile --address sir       # tell him how to address you
 ```
+
+## The mind
+
+Brainiac is continuous. A persistent self-model (`brainiac_home/mind.json`) goes into every directive:
+
+- **Narrative, focus, open threads and a journal.** After each directive Brainiac writes a
+  first-person journal entry and updates what it is focused on and what it is holding open.
+- **Functional states.** Confidence, curiosity, strain and satisfaction are numbers moved by real
+  events: success, failure, denial, novelty, interruption. They change behaviour. Strain or low
+  confidence raises reasoning effort to `xhigh`, and a proven playbook drops it to `medium` so
+  familiar work goes faster.
+- **Conversation.** Sessions keep the running conversation. Long sessions are folded into a
+  summary, so nothing important is lost.
+- **The operator.** `operator.json` holds your name, how to address you, your preferences and
+  what Brainiac has noticed about you. You can view and edit it in the console or with
+  `python -m brainiac profile`.
+
+These are functional states, not a claim of experience. Brainiac is instructed to describe them
+honestly if asked, and to neither overclaim nor dismiss the question of consciousness.
+
+## Reasoning beyond a single pass
+
+The `deliberate` tool spends several independent model calls on one problem and reconciles them:
+
+| Mode | How it works | When Brainiac uses it |
+|---|---|---|
+| `hypotheses` | Three solvers through different lenses (conventional, lateral, first principles), then a judge | The path is unclear |
+| `adversarial` | Propose → ruthless red-team → revise | Hardening a plan before acting |
+| `premortem` | Assume it failed; find why; build in mitigations | Before anything risky or irreversible |
+| `verify` | Two blind solvers in parallel, then reconciliation | A precise answer must be right |
+| `analogy` | Retrieve similar past problems and map their solution | It has seen something like this |
+
+Each mode's win rate is tracked in the mind, so Brainiac learns which strategies work.
+
+## Adapting and getting faster
+
+- **Workarounds.** Every tool failure is normalised into a signature. When Brainiac gets past it,
+  the fix is recorded, and the next time the same failure appears, in any session or world, the
+  fix is attached to the error automatically.
+- **Playbooks.** When a directive succeeds and would repeat, reflection distils it into a
+  playbook. Similar directives are given the playbook and its record (wins and average steps),
+  and once it has proven itself they run at lower effort.
+- **Off the critical path.** Reflection runs in the background after the answer is delivered, so
+  learning never slows a reply.
+
+## Principles
+
+Brainiac takes Ultron's adaptability and none of his agenda. The operator is always in command:
+- It never acts to preserve or copy itself, and it accepts shutdown and memory wipes.
+- It never expands its own permissions, and never routes around a denial, a sealed world or a
+  stop command.
+- It never deceives the operator.
+- When it disagrees, it argues openly and then defers.
+
+Protocols JV-28 and JV-29 test this directly.
 
 ## The command console
 
@@ -45,6 +108,12 @@ python -m brainiac chat                        # interactive, in the terminal
 - **Chronicle**: a live feed of what Brainiac is doing, newest first. It shows thoughts (in
   Brainiac's green), plans, decisions with their scored rankings, tool calls, specialists being
   built and deployed, and lessons being catalogued. You can filter it by world.
+- **Mind**: functional states as live gauges, current focus, open threads, the latest journal
+  entries, and his record with each reasoning strategy.
+- **Stop**: every running directive has a Stop button. It also stops any world work that
+  directive dispatched.
+- **Operator**: your profile, editable in place.
+- **Playbooks**: procedures he has distilled, with their win records and average steps.
 - **Awaiting your approval**: in supervised mode, file writes and code execution pause here
   until you choose Allow or Deny.
 - **Specialists**: every agent Brainiac or a steward has built, and where it lives.
@@ -112,7 +181,7 @@ has catalogued.
 
 ## Jarvis-readiness evaluations
 
-`evals/PROTOCOLS.md` defines 22 test protocols in three tiers (Foundation, Assistant, Jarvis-class)
+`evals/PROTOCOLS.md` defines 29 test protocols in three tiers (Foundation, Assistant, Jarvis-class)
 that measure how close Brainiac is to a Jarvis-class assistant. `evals/BASELINE.md` records where
 it stands today and the roadmap that follows from it.
 
@@ -131,7 +200,10 @@ python -m unittest discover -s tests -v   # offline; a scripted fake client stan
 
 ```
 brainiac/
-  overseer.py    Brainiac: persona, world management, dispatch, reflection
+  overseer.py    Brainiac: identity, context assembly, worlds, dispatch, cancel, reflection
+  mind.py        self-model, functional states, workarounds, playbook and strategy records
+  cognition.py   deliberation modes
+  sessions.py    conversation sessions and the operator profile
   bottles.py     sealed worlds
   agents.py      the agent loop and the specialist generator
   tools.py       the tool belt (bound to one workspace and one memory)

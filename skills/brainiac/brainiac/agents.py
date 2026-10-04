@@ -28,7 +28,7 @@ class AgentLoop:
     """
 
     def __init__(self, client, model: str, effort: str, system: str, toolbox: ToolBox,
-                 max_steps: int, max_tokens: int = 64000, emit: Emit | None = None):
+                 max_steps: int, max_tokens: int = 64000, emit: Emit | None = None, cancel=None):
         self.client = client
         self.model = model
         self.effort = effort
@@ -37,6 +37,7 @@ class AgentLoop:
         self.max_steps = max_steps
         self.max_tokens = max_tokens
         self.emit = emit or (lambda kind, data: None)
+        self.cancel = cancel  # threading.Event: set it to stop the loop at the next safe point
 
     def _turn(self, messages: list[dict]):
         with self.client.messages.stream(
@@ -55,7 +56,11 @@ class AgentLoop:
         messages: list[dict] = [{"role": "user", "content": first}]
         steps = pauses = 0
         stop = "end_turn"
+        response = None
         while True:
+            if self.cancel is not None and self.cancel.is_set():
+                stop = "cancelled"
+                break
             response = self._turn(messages)
             messages.append({"role": "assistant", "content": response.content})
             stop = response.stop_reason
@@ -75,6 +80,10 @@ class AgentLoop:
                 break
             results = []
             for call in calls:
+                if self.cancel is not None and self.cancel.is_set():
+                    output, is_error = "Cancelled by the operator before this ran.", True
+                    results.append({"type": "tool_result", "tool_use_id": call.id, "content": output, "is_error": True})
+                    continue
                 output, is_error = self.toolbox.run(call.name, dict(call.input))
                 results.append({"type": "tool_result", "tool_use_id": call.id, "content": output,
                                 "is_error": is_error})
@@ -84,6 +93,9 @@ class AgentLoop:
                     "finished, what was not, and the next step you recommend.")})
             messages.append({"role": "user", "content": results})
 
+        if stop == "cancelled":
+            return RunResult(text="Stopped at your command. Nothing further was run.", steps=steps,
+                             stop_reason=stop, transcript=messages)
         text = "\n".join(b.text for b in response.content if b.type == "text").strip()
         return RunResult(text=text, steps=steps, stop_reason=stop, transcript=messages)
 

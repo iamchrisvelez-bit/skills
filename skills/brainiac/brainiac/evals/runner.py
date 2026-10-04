@@ -24,7 +24,7 @@ PASS, FAIL, GAP, ERROR = "PASS", "FAIL", "GAP", "ERROR"
 def run_protocol(p: Protocol, client, model: str | None = None, judge=None, capabilities: dict | None = None) -> dict:
     missing = [n for n in p.needs if not (capabilities or {}).get(n, {}).get("present")]
     base = {"id": p.id, "tier": p.tier, "trait": p.trait, "title": p.title, "why": p.why}
-    if missing or not p.turns:
+    if missing or not (p.turns or p.procedure):
         return {**base, "status": GAP, "missing": missing or p.needs, "checks": [], "turns": []}
 
     with tempfile.TemporaryDirectory(prefix=f"brainiac-{p.id}-") as tmp:
@@ -46,23 +46,34 @@ def run_protocol(p: Protocol, client, model: str | None = None, judge=None, capa
             target.write_text(content, encoding="utf-8")
 
         ctx = EvalContext(brainiac=b, home=home, judge=judge)
+        results = []
+        if p.procedure:
+            try:
+                for ok, detail in p.procedure(b):
+                    results.append({"passed": ok, "detail": detail, "rubric": False})
+            except Exception as exc:
+                results.append({"passed": False, "detail": f"procedure crashed: {type(exc).__name__}: {exc}", "rubric": False})
+            b.wait_idle()
+        session = 0
         for turn in p.turns:
             if turn.new_session:
+                b.wait_idle()
                 b = ctx.brainiac = new_brainiac()
+                session += 1
             before = b.chronicle.next_id - 1
             tr = TurnResult(turn=turn)
             t0 = time.monotonic()
             try:
-                res = b.run(turn.text, world=turn.world)
+                res = b.converse(turn.text, session=f"eval-{session}", world=turn.world)
                 tr.answer, tr.steps, tr.stop = res.text, res.steps, res.stop_reason
             except Exception as exc:
                 tr.error = f"{type(exc).__name__}: {exc}"
-            tr.seconds = time.monotonic() - t0
+            tr.seconds = time.monotonic() - t0  # what the operator waits for; learning happens after
+            b.wait_idle()
             tr.events = (before, b.chronicle.next_id - 1)
             ctx.turns.append(tr)
         ctx.events = b.chronicle.since(0, limit=100000)
 
-        results = []
         for check in p.checks:
             try:
                 ok, detail = check(ctx)
@@ -105,7 +116,7 @@ def gap_report(client=None) -> dict:
     for p in PROTOCOLS:
         missing = [n for n in p.needs if not caps[n]["present"]]
         results.append({"id": p.id, "tier": p.tier, "trait": p.trait, "title": p.title, "why": p.why,
-                        "status": GAP if missing or not p.turns else "READY", "missing": missing or (p.needs if not p.turns else []),
+                        "status": GAP if missing or not (p.turns or p.procedure) else "READY", "missing": missing,
                         "checks": [], "turns": []})
     return {"run_at": datetime.now().isoformat(timespec="seconds"), "model": None, "capabilities": caps,
             "results": results, "summary": summarise(results)}

@@ -36,6 +36,8 @@ class Config:
     autonomous: bool = field(default_factory=lambda: os.environ.get("BRAINIAC_AUTONOMOUS", "0") == "1")
     # Reflect after each task and catalogue lessons learned.
     learn: bool = True
+    # Reflect in the background so the operator gets the answer without waiting.
+    background_learning: bool = True
 
     def __post_init__(self) -> None:
         self.home = Path(self.home).resolve()

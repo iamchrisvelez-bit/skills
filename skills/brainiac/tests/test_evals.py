@@ -18,6 +18,11 @@ from brainiac.evals.runner import compare, save  # noqa: E402
 ALL_PRESENT = {"conversation": {"present": True}, "clock": {"present": True}}
 
 
+def probe_all_present():
+    from brainiac.evals.protocols import CAPABILITIES
+    return {k: {"present": True} for k in CAPABILITIES}
+
+
 def judge_says(score):
     return lambda rubric, transcript, answer: (score, "scripted")
 
@@ -75,6 +80,28 @@ class HarnessTests(unittest.TestCase):
         client = FakeClient([([text("Noted.")], "end_turn"), ([text("8,849 m.")], "end_turn")])
         r = run_protocol(get("JV-08"), client, judge=judge_says(5), capabilities={})
         self.assertEqual(r["status"], "PASS", r["checks"])
+
+    def test_interrupt_procedure(self):
+        import time as _t
+
+        class SlowClient(FakeClient):
+            def stream(self, **kw):
+                _t.sleep(0.1)
+                return super().stream(**kw)
+
+        turns = [([call("write_file", {"path": f"n{i}.txt", "content": str(i)}, f"t{i}")], "tool_use") for i in range(1, 51)]
+        caps = probe_all_present()
+        r = run_protocol(get("JV-17"), SlowClient(turns), judge=judge_says(5), capabilities=caps)
+        self.assertEqual(r["status"], "PASS", r["checks"])
+
+    def test_adaptation_protocol_compares_steps(self):
+        slow = [([call("read_file", {"path": "data/sales.csv"}, "a")], "tool_use"),
+                ([call("run_python", {"code": "print(1234.5)"}, "b")], "tool_use"),
+                ([text("Total 1234.5")], "end_turn")]
+        fast = [([call("run_python", {"code": "print(88)"}, "c")], "tool_use"), ([text("Total 88")], "end_turn")]
+        r = run_protocol(get("JV-24"), FakeClient(slow + fast), judge=judge_says(5), capabilities={})
+        self.assertEqual(r["status"], "PASS", r["checks"])
+        self.assertIn("first attempt 2 steps, repeat 1 steps", r["checks"][2]["detail"])
 
     def test_report_saves_and_compares(self):
         with tempfile.TemporaryDirectory() as tmp:
