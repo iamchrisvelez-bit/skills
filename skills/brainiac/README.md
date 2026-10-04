@@ -165,6 +165,24 @@ lessons fly to the Archive.
 
 The **Console** tab keeps the original detailed panels.
 
+### The Aureus station: Brainiac as its automation
+
+`aureus/station.html` is the Aureus Command station, published as a Claude artifact and shown as the
+Aureus district in the Observation Room landscape. Brainiac is its controller: every cycle the
+station runs goes through him. It uses the same models as Brainiac's agents (`MODEL_KIT`, the same
+data as `models.py`), so he and his crew look the same in both places.
+
+- **His mind:** the same identity, method (comprehend, hypothesize, premortem, act, remember) and
+  principles as `overseer.py`, including stopping cleanly when halted.
+- **His controls:**
+  - Crew: create, task and retire up to eight agents.
+  - Production Bay: order trend scans and designs, and send finished listings to the inbox.
+  - Strategy.
+  - Lessons: kept in a memory he reads every cycle.
+- **Autopilot:** runs N cycles and pauses when three decisions are waiting.
+- **The inbox:** spending, publishing, contacting anyone or signing up still needs the operator's
+  approval, and only money logged in the Vault counts.
+
 ## The command console
 
 `python -m brainiac console` serves a local web interface (localhost only):

@@ -1,0 +1,684 @@
+<title>Aureus Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+/* Layout: green-phosphor command terminal. Stat strip and command line on top; agent roster down the left; tabbed main bay (station map, production terminal, inbox, vault, feed, mission) on the right. Single CRT look by choice. */
+:root{
+  --bg:#020906; --panel:#04130b; --panel2:#072015; --line:#0f5a2a; --line2:#1a8a43;
+  --g:#39ff6a; --g2:#9dffb4; --dim:#4fa86a; --mute:#2c6b40; --amber:#ffb000; --red:#ff4a4a; --cyan:#4af2ff; --ink:#d9ffe3;
+  --px:"Silkscreen","Courier New",monospace; --term:"VT323",ui-monospace,"Courier New",monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--term);font-size:19px;line-height:1.15;margin:0}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);z-index:50}
+.app{min-height:100%;display:flex;flex-direction:column;gap:8px;padding-inline:14px;padding-block:10px 14px;box-sizing:border-box}
+@media (min-width:980px){.app{height:100%}}
+.frame{border:2px solid var(--line2);background:var(--panel);box-shadow:0 0 0 1px #000,0 0 14px rgba(57,255,106,.12),inset 0 0 18px rgba(57,255,106,.05)}
+.top{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;justify-content:center;padding:6px 12px}
+.brand h1{font:700 18px/1 var(--px);color:var(--g);margin:0;letter-spacing:.06em;text-shadow:0 0 8px rgba(57,255,106,.7)}
+.brand span{font:400 10px/1.4 var(--px);color:var(--dim);letter-spacing:.08em}
+.stats{flex:1 1 520px;display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:0;min-width:0}
+.st{padding:6px 10px;border-right:1px solid var(--line);min-width:0}
+.st:last-child{border-right:0}
+.st .k{font:400 9.5px/1.2 var(--px);color:var(--dim);letter-spacing:.06em;white-space:nowrap}
+.st .v{font:400 25px/1.05 var(--term);color:var(--g);font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 6px rgba(57,255,106,.5)}
+.st .v.money{color:var(--amber);text-shadow:0 0 6px rgba(255,176,0,.45)}
+.st .v.neg{color:var(--red)} .st .v.est{color:var(--mute);text-shadow:none}
+.cmd{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;padding:6px}
+.cmd .prompt{font:700 12px/1 var(--px);color:var(--g);display:flex;align-items:center;padding:0 4px}
+.cmd input{flex:1 1 260px;min-width:0}
+input,textarea,select{font-family:var(--term);font-size:19px;background:#000;color:var(--g2);border:1px solid var(--line2);padding:5px 8px;border-radius:0}
+input::placeholder,textarea::placeholder{color:var(--mute)}
+textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:84px}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+button{font:700 10.5px/1 var(--px);letter-spacing:.06em;color:#000;background:var(--g);border:0;padding:9px 11px;cursor:pointer;text-transform:uppercase;box-shadow:0 0 8px rgba(57,255,106,.35)}
+button:hover{background:var(--g2)}
+button:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+button.ghost{background:transparent;color:var(--g);border:1px solid var(--line2);box-shadow:none}
+button.ghost:hover{background:var(--panel2)}
+button.amber{background:var(--amber)} button.red{background:var(--red);color:#fff;box-shadow:none}
+button.sm{font-size:9px;padding:6px 8px}
+
+.main{flex:1;display:grid;grid-template-columns:270px minmax(0,1fr);gap:8px;min-height:0}
+@media (max-width:979px){.main{grid-template-columns:1fr}.roster{order:2}}
+.roster{display:flex;flex-direction:column;min-height:0}
+.ph{font:700 11px/1 var(--px);color:var(--g);letter-spacing:.08em;padding:9px 10px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;background:var(--panel2)}
+.ph span{color:var(--dim);font-weight:400}
+.rlist{overflow:auto;flex:1;min-height:0;padding:6px;display:flex;flex-direction:column;gap:4px;max-height:60vh}
+@media (min-width:980px){.rlist{max-height:none}}
+.ritem{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;text-align:left;font:inherit;color:inherit;background:transparent;border:1px solid transparent;padding:5px 6px;cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:none}
+.ritem:hover,.ritem[aria-pressed="true"]{border-color:var(--line2);background:var(--panel2)}
+.ritem > *{min-width:0}
+.ritem i{width:10px;height:10px;background:var(--c)}
+.ritem .n{font:700 10.5px/1.2 var(--px);color:var(--g);display:block}
+.ritem > span:nth-child(2){overflow:hidden}
+.ritem .r{font-size:16px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.tag{font:400 9px/1 var(--px);padding:3px 5px;border:1px solid currentColor;color:var(--dim);white-space:nowrap}
+.tag.working{color:var(--g);background:rgba(57,255,106,.12)} .tag.queued{color:var(--amber)} .tag.idle{color:var(--mute)}
+.tag.pending{color:var(--amber)} .tag.approved{color:var(--g)} .tag.rejected{color:var(--red)} .tag.done{color:var(--cyan)}
+.tag.concept{color:var(--cyan)} .tag.queued-list{color:var(--amber)} .tag.listed{color:var(--g)}
+.rsec{font:400 9.5px/1 var(--px);color:var(--mute);padding:8px 6px 3px;letter-spacing:.08em}
+
+.bay{display:flex;flex-direction:column;min-height:0;min-width:0}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;background:var(--panel2)}
+.tab{font:700 10.5px/1 var(--px);color:var(--dim);background:transparent;border:0;border-right:1px solid var(--line);padding:10px 12px;box-shadow:none;white-space:nowrap}
+.tab:hover{background:var(--panel);color:var(--g)}
+.tab[aria-selected="true"]{color:#000;background:var(--g)}
+.tab .b{display:inline-block;margin-left:5px;background:var(--amber);color:#000;padding:1px 4px}
+.tab .b[hidden]{display:none}
+.view{flex:1;min-height:0;overflow:auto;position:relative}
+.view[hidden]{display:none}
+.pad{padding:12px;display:flex;flex-direction:column;gap:10px}
+
+/* station */
+.view#v-station{display:flex;flex-direction:column;overflow:hidden}
+.view#v-station[hidden]{display:none}
+.stwrap{position:relative;background:#000;flex:1;min-height:0;display:flex}
+canvas#station{display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;cursor:crosshair;max-width:100%}
+@media (max-width:979px){.view#v-station{overflow:visible}.stwrap{flex:none;display:block}canvas#station{height:auto;aspect-ratio:16/10}}
+.ticker{border-top:1px solid var(--line);padding:7px 10px;min-height:44px;color:var(--g2);font-size:19px;background:var(--panel)}
+.ticker b{font:700 10px/1 var(--px);color:var(--amber);margin-right:8px}
+.detail{position:absolute;right:10px;bottom:10px;width:min(380px,calc(100% - 20px));max-height:calc(100% - 20px);overflow:auto;background:rgba(2,12,6,.96);border:2px solid var(--g);box-shadow:0 0 18px rgba(57,255,106,.3);display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:0}
+.detail[hidden]{display:none}
+@media (max-width:640px){.detail{position:static;width:auto;max-height:none;grid-template-columns:1fr}.detail svg{display:none}}
+.dhead{grid-column:1/-1;display:flex;justify-content:space-between;align-items:flex-start;padding:9px 10px 6px;border-bottom:1px solid var(--line)}
+.dhead .k{font:400 9px/1 var(--px);color:var(--dim);letter-spacing:.1em}
+.dhead h2{font:700 21px/1 var(--px);color:var(--g);margin:5px 0 0;text-shadow:0 0 8px rgba(57,255,106,.6)}
+.dtab{padding:4px 8px 8px;display:grid;grid-template-columns:96px minmax(0,1fr);border-collapse:collapse}
+.dtab div{border-bottom:1px solid var(--line);padding:4px 4px;font-size:16.5px;min-width:0;overflow-wrap:anywhere}
+.dtab div:nth-child(odd){font:400 9px/1.6 var(--px);color:var(--dim);letter-spacing:.05em;text-transform:uppercase}
+.dacts{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 10px}
+.detail svg{width:92px;height:100%;min-height:200px;padding:10px 8px;box-sizing:border-box;image-rendering:pixelated}
+
+/* production */
+.prodhead{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.prodhead .k{font:400 10px/1 var(--px);color:var(--dim);letter-spacing:.1em}
+.prodhead h2{font:700 clamp(18px,3vw,26px)/1 var(--px);color:var(--g);margin:5px 0 0;text-shadow:0 0 10px rgba(57,255,106,.6)}
+.pgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px}
+@media (max-width:860px){.pgrid{grid-template-columns:1fr}}
+.box{border:1px solid var(--line2);background:var(--panel);min-width:0}
+.box .bd{padding:9px 10px;display:flex;flex-direction:column;gap:8px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.kpis .st{border-right:1px solid var(--line)}
+.trend{border:1px solid var(--line);padding:7px 8px;display:flex;flex-direction:column;gap:4px;background:#000}
+.trend .t{font:700 10.5px/1.3 var(--px);color:var(--g)}
+.trend .m{font-size:16.5px;color:var(--dim);line-height:1.2}
+.trend .q{color:var(--amber);font-size:18px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.note{font-size:16px;color:var(--mute);line-height:1.25}
+.designs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.dz{border:1px solid var(--line2);background:#000;cursor:pointer;padding:0;display:flex;flex-direction:column;text-align:left;font:inherit;color:inherit;text-transform:none;letter-spacing:0;box-shadow:none}
+.dz:hover,.dz[aria-pressed="true"]{border-color:var(--g);box-shadow:0 0 10px rgba(57,255,106,.35)}
+.dz .img{aspect-ratio:1/1;background:#f4f1ea;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.dz .img img{width:100%;height:100%;object-fit:contain;display:block}
+.dz .img.pending{background:repeating-linear-gradient(45deg,#06180d 0 8px,#04130b 8px 16px);color:var(--g);font:700 10px/1.3 var(--px);text-align:center;padding:8px}
+.dz .c{padding:6px 7px;display:flex;flex-direction:column;gap:4px}
+.dz .c b{font:700 10px/1.25 var(--px);color:var(--g);font-weight:700}
+.sel{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr);gap:10px}
+@media (max-width:560px){.sel{grid-template-columns:1fr}}
+.sel .img{background:#f4f1ea;aspect-ratio:1/1;border:1px solid var(--line2)}
+.sel .img img{width:100%;height:100%;object-fit:contain;display:block}
+.copy{background:#000;border:1px solid var(--line);padding:7px 8px;font-size:17.5px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
+.lbl{font:400 9.5px/1 var(--px);color:var(--dim);letter-spacing:.08em}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{font-size:16px;border:1px solid var(--line2);padding:1px 6px;color:var(--g2)}
+
+/* lists */
+.list{display:flex;flex-direction:column;gap:6px}
+.card{border:1px solid var(--line);border-left:4px solid var(--c,var(--line2));background:#000;padding:8px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.card .t{font:700 10.5px/1.3 var(--px);color:var(--c,var(--g))}
+.card .m{color:var(--dim);font-size:17px;overflow-wrap:anywhere}
+.log{display:flex;flex-direction:column;gap:5px;font-size:18px}
+.log div{overflow-wrap:anywhere}
+.log .w{font:700 9.5px/1 var(--px);margin-right:7px;color:var(--cyan)}
+.log .w.AUREUS{color:var(--amber)} .log .w.BRAINIAC{color:#c9a8ff} .log .w.SYS{color:var(--mute)} .log .w.YOU{color:var(--g)} .log .w.BAY{color:#ff7ad9}
+.ledgerform{display:grid;grid-template-columns:120px 120px minmax(0,1fr) auto;gap:6px}
+@media (max-width:560px){.ledgerform{grid-template-columns:1fr 1fr}.ledgerform input[name=n]{grid-column:1/-1}}
+.banner{border:1px solid var(--red);background:#200606;color:#ffd2d2;padding:8px 10px;font-size:18px}
+.empty{color:var(--mute);font-size:18px}
+.overlay{position:fixed;inset:0;background:rgba(0,6,2,.86);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
+.overlay[hidden]{display:none}
+.modal{background:var(--panel);border:2px solid var(--g);max-width:760px;width:100%;max-height:86vh;display:flex;flex-direction:column}
+.modal header{padding:10px 12px;border-bottom:1px solid var(--line)}
+.modal pre{margin:0;padding:12px;overflow:auto;white-space:pre-wrap;font-family:var(--term);font-size:19px;color:var(--ink)}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid var(--line);flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <div class="top">
+    <div class="frame brand"><h1>AUREUS COMMAND</h1><span>BRAINIAC IN CONTROL · OPERATOR CHRIS VELEZ</span></div>
+    <div class="frame stats" id="stats"></div>
+  </div>
+  <div class="frame cmd">
+    <span class="prompt">&gt;_</span>
+    <input id="directive" placeholder="Order to Brainiac, e.g. move the bay onto spring floral shirts" aria-label="Order to Brainiac">
+    <select id="brain" aria-label="Brain"><option value="complex">Max intellect</option><option value="default">Balanced</option><option value="quick">Fast</option></select>
+    <button id="btnRun">Run cycle</button>
+    <button id="btnAuto" class="ghost">Autopilot ×<span id="autoN">3</span></button>
+    <button id="btnHalt" class="red" disabled>Halt</button>
+  </div>
+  <div id="offline" class="banner" hidden>Brainiac's mind only runs inside Claude. Open this page from your Claude app and allow it to use Claude when asked.</div>
+
+  <div class="main">
+    <aside class="frame roster">
+      <div class="ph">CREW <span id="crewCount">0/8</span></div>
+      <div class="rlist" id="roster"></div>
+    </aside>
+
+    <section class="frame bay">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="t-station" aria-selected="true" type="button">Station</button>
+        <button class="tab" role="tab" id="t-prod" aria-selected="false" type="button">Production</button>
+        <button class="tab" role="tab" id="t-inbox" aria-selected="false" type="button">Inbox<span class="b" id="inboxB" hidden>0</span></button>
+        <button class="tab" role="tab" id="t-vault" aria-selected="false" type="button">Vault</button>
+        <button class="tab" role="tab" id="t-feed" aria-selected="false" type="button">Feed</button>
+        <button class="tab" role="tab" id="t-mission" aria-selected="false" type="button">Mission</button>
+      </div>
+
+      <div class="view" id="v-station">
+        <div class="stwrap">
+          <canvas id="station" width="480" height="300" aria-label="Pixel map of the station showing each room and the agents at work"></canvas>
+          <div class="detail" id="detail" hidden></div>
+        </div>
+        <div class="ticker"><b>BRAINIAC</b><span id="tick">Watching. Give an order, run a cycle, or hand him the autopilot.</span></div>
+      </div>
+
+      <div class="view" id="v-prod" hidden><div class="pad" id="prod"></div></div>
+      <div class="view" id="v-inbox" hidden><div class="pad"><div class="note">Anything that spends money, goes public, or contacts a real person stops here. Agents can't act on the world; you do.</div><div class="list" id="inbox"></div></div></div>
+      <div class="view" id="v-vault" hidden><div class="pad">
+        <div class="note">Only money you log here counts. The pipeline figure is the agents' own estimate and proves nothing.</div>
+        <form class="ledgerform" id="ledgerForm">
+          <select id="lkind" aria-label="Entry type"><option value="revenue">Revenue</option><option value="cost">Cost</option></select>
+          <input id="lamt" type="number" min="0" step="0.01" placeholder="$ amount" aria-label="Amount in dollars" required>
+          <input id="lnote" name="n" placeholder="What was it? e.g. Etsy order, sticker" aria-label="Note">
+          <button type="submit">Log</button>
+        </form>
+        <div class="list" id="ledger"></div>
+      </div></div>
+      <div class="view" id="v-feed" hidden><div class="pad"><div class="log" id="log"></div></div></div>
+      <div class="view" id="v-mission" hidden><div class="pad">
+        <label class="lbl" for="mission">PRIME DIRECTIVE</label><textarea id="mission"></textarea>
+        <label class="lbl" for="profile">OPERATOR ASSETS (TIME, CAPITAL, SKILLS)</label><textarea id="profile"></textarea>
+        <label class="lbl" for="podbrief">PRODUCTION BAY BRIEF (NICHES, STYLE, PRODUCTS YOU WANT)</label><textarea id="podbrief"></textarea>
+        <div class="lbl">STRATEGY · SET BY BRAINIAC</div><div class="copy" id="strategy"></div>
+        <div class="lbl">WHAT BRAINIAC HAS LEARNED (HE READS THIS EVERY CYCLE)</div><div class="copy" id="lessons"></div>
+        <div class="row"><label class="lbl" for="autoSel">AUTOPILOT CYCLES</label><select id="autoSel"><option>1</option><option selected>3</option><option>5</option></select>
+          <button class="ghost sm" id="btnReset" type="button">Wipe HQ</button><span class="note" id="saveState"></span></div>
+      </div></div>
+    </section>
+  </div>
+</div>
+
+<div class="overlay" id="viewer" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vTitle">
+    <header><div class="lbl" id="vMeta"></div><div style="font:700 13px/1.3 var(--px);color:var(--g);margin-top:5px" id="vTitle"></div></header>
+    <pre id="vBody"></pre>
+    <div class="foot"><button class="ghost sm" id="vCopy" type="button">Copy</button><button class="sm" id="vClose" type="button">Close</button></div>
+  </div>
+</div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const MAX_AGENTS=8;
+const ROLE_COLORS=['#4af2ff','#39ff6a','#ffb000','#c58cff','#ff6fa8','#4aa3ff','#f5e042','#a3e635'];
+const money=n=>(n<0?'-':'')+'$'+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const money0=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
+const uid=()=>Math.random().toString(36).slice(2,8);
+const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function fresh(){return{
+  v:1,cycle:0,directive:'',
+  mission:'Build durable, legal income for Chris Velez and his family using only AI agents. Prefer low-capital assets that compound (content, digital products, licensing, services that can be productized) over one-off gigs. Protect the downside.',
+  profile:'Day job: asset protection leader in luxury retail (New Jersey). Side hustle: clipping short-form anime, movie and streamer clips for social media. Owns original story IP (Emittime transmedia universe) and a mobile fantasy RPG in development (Dragonbound).\nTime available per week: (edit me)\nStarting capital: (edit me)\nRisk tolerance: (edit me)',
+  podBrief:'Etsy print-on-demand through Printify: shirts, hoodies, mugs, stickers, posters. Original designs only, no brands, characters, celebrities or trademarked phrases.',
+  strategy:{thesis:'',streams:[]},agents:[],retired:[],approvals:[],ledger:[],trends:[],lessons:[],bayQueue:[],
+  log:[{t:Date.now(),who:'SYS',msg:'Vault online. Brainiac has the station. He acts when you run a cycle or hand him the autopilot.'}],
+  settings:{brain:'complex',auto:3}
+}}
+let S=fresh();
+let sample=null,DB=null,docRef=null,saveTimer=null,busy=false,ctl=null,autoOn=false;
+let products={},selProduct=null,selected='aureus',detailOn=false,bayBusy='',bayCtl=null;
+
+/* ---------- persistence ---------- */
+function save(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
+  const blob=JSON.stringify(S);
+  if(docRef){try{await docRef.set({state:blob,updatedAt:Date.now()});$('#saveState').textContent='Saved to HQ.';return}catch(e){$('#saveState').textContent='Cloud save failed; kept on this device.'}}
+  try{localStorage.setItem('aureus',blob)}catch{}
+},500)}
+function adopt(raw){try{const o=JSON.parse(raw);if(o&&o.v===1){S=Object.assign(fresh(),o);return true}}catch{}return false}
+
+/* ---------- helpers ---------- */
+function log(who,msg){S.log.push({t:Date.now(),who,msg:String(msg).slice(0,1200)});if(S.log.length>90)S.log.splice(0,S.log.length-90);renderLog()}
+function pending(){return S.approvals.filter(a=>a.status==='pending')}
+const isEtsy=l=>/etsy|printify|pod\b|print-on-demand/i.test(l.note||'')||!!l.product;
+function totals(){let r=0,c=0,e=0;for(const l of S.ledger){if(l.kind==='revenue'){r+=l.amt;if(isEtsy(l))e+=l.amt}else c+=l.amt}const p=S.agents.reduce((s,a)=>s+(+a.est||0),0);return{r,c,e,p,net:r-c}}
+function setTick(t){$('#tick').textContent=t}
+
+/* ---------- models: the same pixel bodies Brainiac gives his agents (brainiac/models.py) ---------- */
+const MODEL_KIT = {"archetypes":{"scout":"search web research scout survey track find explore monitor watch radar comet orbit star","engineer":"code python test build debug script engineer compile integrat automat tool server deploy fix","scribe":"write doc lore proof edit story report note letter draft summar translat copy prose","artist":"render art design map draw svg pixel sprite diagram image cartograph visual paint chart","analyst":"data finance ledger count budget stat math physic model analy number account forecast metric"},"templates":{"scout":["......a.","......d.",".....?d.","....?###","...?####","..?#hhhh","..?##eee","..?##eee","..?#####","...?####","....?###",".....?#d","......d.",".....?a.","......a.","........"],"engineer":["........","....dddd","...d####","...#hhhh","...#e#e#","...#####","....dddd","..aa####","..a?####","..a?#aa#","..??####","...?####","....##..","....##..","...ddd..","........"],"scribe":["......a.",".....ddd","....d###","....#hhh","....#e##","....####",".....###","....?###","...?####","..?#####","..?##a##",".?######",".?######",".?######","..dddddd","........"],"artist":["....aaa.","...aaaaa","....dddd","....#hhh","....#e##","....####",".....##.","...?####","..?#####",".a?##a##",".a.?####","....####","....#..#","....#..#","...dd..d","........"],"analyst":["........","........","....dddd","...d####","...#hhhh","...#eeee","...#####","..dddddd",".?######",".?#a#a#a",".?######",".?#a#a#a",".?######","..dddddd","..d....d","........"]},"ramps":[["#3b2a6b","#8a6cf0","#c9b8ff"],["#1f4f4a","#3fbfa4","#9df0dc"],["#5a3a10","#e0a03a","#ffd98a"],["#5a1f3a","#e0608f","#ffb3cd"],["#1f3a5a","#4f9ae0","#a8d4ff"],["#2f4a14","#8fcf3f","#d2f59a"],["#5a2a1f","#e07a50","#ffc0a0"],["#2a2f3a","#8a96aa","#d4dbe6"]],"accents":{"scout":"#6fe8ff","engineer":"#ffcb6b","scribe":"#f5e08a","artist":"#ff8fd0","analyst":"#7fe0a6"},"steward":["......a.",".....aaa","....a#a#","....dddd","....#hhh","....#eee","....####","...dd##d","..d#####","..##a###","..#h####","..#h##a#","..######","...#####","...dd.dd","........","........","........"],"brainiac":{"rows":["...n....n....n....","...l....l....l....","...l....l....l....",".....GGGGGGGG.....","....GgggggggggG...","...Gggggggggggg...","...gggeeggggeeg...","...gggeEggggeEg...","...gggggggggggg...","....gggggdgggg....",".....gggggggg.....","......gggggg......","....PPPPPPPPPP....","...PppppPPppppP...","..PpppppppppppppP.",".gPppppAppAppppPg.",".ggppppppppppppgg.","..g.pppppppppp.g..","....pppppppppp....","....ppp....ppp....","....ppp....ppp....","....ppp....ppp....","...kkkk....kkkk...",".................."],"archetype":"brainiac","custom":false,"palette":{"n":"#b98cff","l":"#6e4fb3","G":"#a8f0c4","g":"#6fcf8f","e":"#f2fff6","E":"#ff6fa8","d":"#3d8a5c","P":"#6e4fb3","p":"#4b3590","A":"#ffd98a","k":"#1a1430"}}};  // generated from brainiac/models.py
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hashStr(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h;}
+function outline(grid){const H=grid.length,W=grid[0].length,f=(y,x)=>y>=0&&y<H&&x>=0&&x<W&&grid[y][x]!=='.'&&grid[y][x]!=='o';
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(grid[y][x]==='.'&&(f(y,x+1)||f(y+1,x)||f(y,x-1)||f(y-1,x)))grid[y][x]='o';return grid.map(r=>r.join(''));}
+const MODELS=new Map();
+function genModel(name,purpose){const key=name+'|'+purpose;if(MODELS.has(key))return MODELS.get(key);
+  const n=name.toLowerCase(),p=(purpose||'').toLowerCase();
+  const sc=Object.entries(MODEL_KIT.archetypes).map(([k,w])=>[k,w.split(' ').reduce((s,x)=>s+2*n.includes(x)+p.includes(x),0)]).sort((a,b)=>b[1]-a[1]);
+  const keys=Object.keys(MODEL_KIT.archetypes).sort(),arch=sc[0][1]?sc[0][0]:keys[hashStr(name)%keys.length];
+  const rnd=mulberry(hashStr(n)),[dark,body,hi]=MODEL_KIT.ramps[Math.floor(rnd()*MODEL_KIT.ramps.length)];
+  const grid=MODEL_KIT.templates[arch].map(row=>{const h=[...row].map(ch=>ch==='?'?(rnd()<.58?'#':'.'):ch);return[...h,...h.slice().reverse()];});
+  const m={rows:outline(grid),archetype:arch,palette:{o:'#0b0914','#':body,h:hi,d:dark,a:MODEL_KIT.accents[arch],e:rnd()<.7?'#f2fff6':MODEL_KIT.accents[arch]}};
+  MODELS.set(key,m);return m;}
+const BRAINIAC_MODEL=MODEL_KIT.brainiac;
+const modelOf=a=>genModel(a.name,(a.role||'')+' '+(a.mission||''));
+function modelSVG(m){const w=m.rows[0].length,h=m.rows.length;let r='';
+  m.rows.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='.'&&m.palette[c])r+='<rect x="'+x+'" y="'+y+'" width="1.02" height="1.02" fill="'+m.palette[c]+'"/>';}));
+  return '<svg viewBox="-1 -1 '+(w+2)+' '+(h+2)+'" shape-rendering="crispEdges" aria-hidden="true">'+r+'</svg>';}
+
+/* ---------- rooms ---------- */
+const ROOMS={
+  bridge:{name:'Bridge',x:196,y:34,w:92,h:64,fn:'Command authority: strategy, agent creation and retirement, priority calls.'},
+  research:{name:'Research Lab',x:62,y:40,w:104,h:58,fn:'Market and demand research, trend scans, competitor teardown.'},
+  comms:{name:'Comms Array',x:318,y:40,w:98,h:52,fn:'Launch plans, distribution, short-form marketing, community.'},
+  fab:{name:'Fabrication',x:40,y:132,w:112,h:70,fn:'Product specs, style bibles, asset and design direction.'},
+  pub:{name:'Publishing Room',x:178,y:150,w:110,h:56,fn:'Store listings, SEO titles and tags, product copy.'},
+  bay:{name:'Production Bay',x:312,y:118,w:128,h:84,fn:'Print-on-demand line: trend scans, design drafts, Etsy listings.'},
+  vault:{name:'Vault',x:198,y:232,w:86,h:44,fn:'Pricing, licensing, compliance and the real-money ledger.'},
+  quarters:{name:'Crew Quarters',x:60,y:230,w:96,h:46,fn:'Idle bunks for unassigned agents.'}
+};
+function roomFor(a){const s=((a.role||'')+' '+(a.stream||'')+' '+(a.name||'')).toLowerCase();
+  if(/licens|legal|compliance|pric|ledger|financ|account/.test(s))return'vault';
+  if(/listing|seo|copy|publish|store/.test(s))return'pub';
+  if(/launch|distribution|market(ing)?\b|social|community|comms|outreach|short-form/.test(s))return'comms';
+  if(/research|analyst|scout|demand|trend|data/.test(s))return'research';
+  if(/art|spec|design|forge|fabric|product|asset|director/.test(s))return'fab';
+  if(/print|pod|etsy|merch/.test(s))return'bay';
+  return'quarters';}
+const BAYCREW=[{id:'bay-trend',name:'TREND',role:'Trend scanner',color:'#ff7ad9'},{id:'bay-muse',name:'MUSE',role:'Design drafter',color:'#4af2ff'},{id:'bay-lister',name:'LISTER',role:'Listing writer',color:'#ffb000'}];
+
+/* ---------- top stats ---------- */
+function renderStats(){const t=totals();const live=Object.values(products).filter(p=>p.status==='listed').length;
+  const cells=[['REVENUE',money(t.r),'money'],['ETSY',money(t.e),'money'],['COSTS',money(t.c),t.c?'neg':''],['NET',money(t.net),t.net<0?'neg':'money'],['PIPELINE/MO',money0(t.p),'est'],['LISTINGS',live+' live',''],['AGENTS',S.agents.length+'/'+MAX_AGENTS,''],['CYCLE',String(S.cycle).padStart(2,'0'),'']];
+  $('#stats').innerHTML=cells.map(([k,v,c])=>'<div class="st"><div class="k">'+k+'</div><div class="v '+c+'">'+esc(v)+'</div></div>').join('');}
+
+/* ---------- roster ---------- */
+function renderRoster(){
+  $('#crewCount').textContent=S.agents.length+'/'+MAX_AGENTS;
+  const item=(id,name,role,color,st)=>'<button class="ritem" type="button" data-sel="'+esc(id)+'" aria-pressed="'+(selected===id)+'" style="--c:'+esc(color)+'"><i></i><span><span class="n">'+esc(name)+'</span><br><span class="r">'+esc(role)+'</span></span><span class="tag '+esc(st)+'">'+esc(st.toUpperCase())+'</span></button>';
+  let h='<div class="rsec">CONTROLLER</div>'+item('aureus','BRAINIAC','Runs the station · Bridge','#b98cff',busy&&mood==='think'?'working':autoOn?'queued':'idle');
+  h+='<div class="rsec">AGENTS · CREATED BY BRAINIAC</div>';
+  h+=S.agents.length?S.agents.map(a=>item(a.id,a.name,a.role,a.color,a.status)).join(''):'<div class="empty" style="padding:4px 6px">No agents yet. Brainiac builds his own crew on the first cycle.</div>';
+  h+='<div class="rsec">PRODUCTION BAY · DIRECTED BY BRAINIAC</div>'+BAYCREW.map(b=>item(b.id,b.name,b.role,b.color,bayBusy&&bayWho()===b.id?'working':'idle')).join('');
+  $('#roster').innerHTML=h;
+  $('#roster').querySelectorAll('[data-sel]').forEach(b=>b.onclick=()=>{select(b.dataset.sel);showTab('station');});}
+function select(id){selected=id;detailOn=true;renderRoster();renderDetail();const a=S.agents.find(x=>x.id===id);if(a)focusSlot=a.id;}
+
+/* ---------- detail card ---------- */
+const WIRE_UNUSED='<svg viewBox="0 0 120 240" aria-hidden="true"><g fill="none" stroke="#39ff6a" stroke-width="1.2" opacity=".9"><ellipse cx="60" cy="28" rx="15" ry="18"/><path d="M47 24h26M50 33h20"/><path d="M52 46l-2 10M68 46l2 10"/><path d="M30 60q30-10 60 0l-6 46q-24 8-48 0z"/><path d="M60 60v48M38 74h44M40 90h40"/><path d="M30 62l-14 40 6 38M90 62l14 40-6 38"/><circle cx="22" cy="142" r="4"/><circle cx="98" cy="142" r="4"/><path d="M40 108l-6 56 4 62M80 108l6 56-4 62"/><path d="M52 110l2 52M68 110l-2 52"/><path d="M30 228h16M74 228h16"/></g><g stroke="#39ff6a" stroke-width=".5" opacity=".35">'+Array.from({length:12},(_,i)=>'<path d="M0 '+(i*20+6)+'h120"/>').join('')+'</g></svg>';
+const BRAIN={complex:'Claude · max intellect',default:'Claude · balanced',quick:'Claude · fast'};
+function renderDetail(){const d=$('#detail');let k,name,rows,acts='';
+  let portrait=BRAINIAC_MODEL;
+  if(selected==='aureus'){k='STATION CONTROLLER';name='BRAINIAC';rows=[['Agent class','Overseer · twelfth-level intellect'],['Lineage','Brainiac, Ultron, Jarvis, Alfred'],['Model core',BRAIN[S.settings.brain]],['Assigned room','Bridge'],['Controls','Strategy, crew, Production Bay, inbox requests'],['Current assignment',busy?'Running cycle '+(S.cycle+1):autoOn?'Autopilot':'Awaiting orders'],['Lessons kept',String(S.lessons.length)],['Bay orders queued',String(S.bayQueue.length)],['Last briefing',(()=>{const m=[...S.log].reverse().find(l=>l.who==='BRAINIAC'||l.who==='AUREUS')?.msg||'None yet';return m.length>180?m.slice(0,178)+'…':m;})()]];}
+  else if(BAYCREW.some(b=>b.id===selected)){const b=BAYCREW.find(x=>x.id===selected);portrait=genModel(b.name,b.role);k='PRODUCTION BAY';name=b.name;rows=[['Agent class',b.role],['Model core',BRAIN[S.settings.brain==='complex'?'default':S.settings.brain]],['Assigned room','Production Bay'],['Room function',ROOMS.bay.fn],['Current assignment',bayBusy&&bayWho()===b.id?bayBusy:'Standing by'],['Output',b.id==='bay-trend'?(S.trends.length+' trend leads'):(Object.keys(products).length+' designs')]];acts='<button class="sm" type="button" data-go="prod">Open terminal</button>';}
+  else{const a=S.agents.find(x=>x.id===selected);if(!a){selected='aureus';return renderDetail();}const rm=ROOMS[roomFor(a)];portrait=modelOf(a);k='AGENT · '+(a.stream||'UNASSIGNED').toUpperCase().slice(0,40);name=a.name;
+    rows=[['Agent class',a.role],['Model core',BRAIN[S.settings.brain==='complex'?'default':S.settings.brain]],['Assigned room',rm.name],['Room function',rm.fn],['Current assignment',a.task||(a.lastSummary?'Done: '+a.lastSummary:'Idle')],['Standing mission',a.mission||'None'],['Est. monthly',a.est?money0(a.est)+' (estimate)':'None yet']];
+    acts=(a.deliverables?.length?'<button class="sm" type="button" data-work="'+esc(a.id)+'">View work</button>':'')+'<button class="ghost sm" type="button" data-retire="'+esc(a.id)+'"'+(busy?' disabled':'')+'>Retire</button>';}
+  d.innerHTML='<div class="dhead"><div><div class="k">'+esc(k)+'</div><h2>'+esc(name)+'</h2></div><button class="ghost sm" type="button" id="dClose" aria-label="Close">X</button></div><div class="dtab">'+rows.map(([a,b])=>'<div>'+esc(a)+'</div><div>'+esc(b)+'</div>').join('')+'</div>'+modelSVG(portrait)+(acts?'<div class="dacts">'+acts+'</div>':'');
+  d.hidden=!detailOn;
+  $('#dClose').onclick=()=>{detailOn=false;d.hidden=true;};
+  d.querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>openWork(S.agents.find(a=>a.id===b.dataset.work)));
+  d.querySelectorAll('[data-retire]').forEach(b=>b.onclick=()=>{const a=S.agents.find(x=>x.id===b.dataset.retire);if(!a)return;retire(a.id,'Retired by operator');log('YOU','Retired '+a.name+'.');selected='aureus';renderAll();save();});
+  d.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>showTab('prod'));}
+
+/* ---------- inbox, ledger, feed, mission ---------- */
+function renderInbox(){const box=$('#inbox');const n=pending().length;$('#inboxB').textContent=n;$('#inboxB').hidden=!n;
+  const items=[...S.approvals].reverse().slice(0,30);
+  if(!items.length){box.innerHTML='<div class="empty">Nothing waiting on you.</div>';return}
+  box.innerHTML=items.map(p=>{const c=p.status==='pending'?'var(--amber)':p.status==='approved'?'var(--g)':p.status==='done'?'var(--cyan)':'var(--red)';
+    return '<div class="card" style="--c:'+c+'"><div class="row"><span class="t">'+esc(p.title)+'</span><span class="tag '+p.status+'">'+(p.status==='approved'?'YOUR MOVE':p.status.toUpperCase())+'</span></div><div class="m">'+esc(p.detail)+'</div><div class="m">from '+esc(p.agent)+' · cost '+money0(+p.cost||0)+' · est value '+money0(+p.value||0)+'</div>'+(p.note?'<div class="m">your note: '+esc(p.note)+'</div>':'')+
+      (p.status==='pending'?'<div class="row"><input id="note_'+p.id+'" placeholder="Note for Brainiac (optional)" style="flex:1 1 160px;min-width:0" aria-label="Note"><button class="sm" type="button" data-ok="'+p.id+'">Approve</button><button class="red sm" type="button" data-no="'+p.id+'">Reject</button></div>':
+       p.status==='approved'?'<div class="row"><button class="sm" type="button" data-did="'+p.id+'">I did it</button></div>':'')+'</div>';}).join('');
+  box.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>decide(b.dataset.ok,'approved'));
+  box.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>decide(b.dataset.no,'rejected'));
+  box.querySelectorAll('[data-did]').forEach(b=>b.onclick=()=>{const p=S.approvals.find(x=>x.id===b.dataset.did);if(!p)return;p.status='done';log('YOU','Executed: '+p.title);
+    if(p.product&&products[p.product])setProduct(p.product,{status:'listed',listedAt:Date.now()});renderAll();save();});}
+function decide(id,status){const p=S.approvals.find(x=>x.id===id);if(!p)return;p.status=status;p.note=($('#note_'+id)?.value||'').trim();log('YOU',(status==='approved'?'Approved':'Rejected')+': '+p.title+(p.note?' — '+p.note:''));
+  if(p.product&&products[p.product])setProduct(p.product,{status:status==='approved'?'queued-list':'concept'});renderAll();save();}
+function renderLedger(){const box=$('#ledger');if(!S.ledger.length){box.innerHTML='<div class="empty">No real money logged yet.</div>';return}
+  box.innerHTML=[...S.ledger].reverse().slice(0,40).map(l=>'<div class="card" style="--c:'+(l.kind==='revenue'?'var(--amber)':'var(--red)')+'"><div class="row"><span class="t">'+(l.kind==='revenue'?'+':'−')+money(l.amt)+'</span><span class="m">'+new Date(l.at).toLocaleDateString()+'</span></div><div class="m">'+esc(l.note||'')+'</div></div>').join('');}
+function renderLog(){const box=$('#log');if(!box)return;box.innerHTML=S.log.slice(-70).reverse().map(l=>'<div><span class="w '+(['BRAINIAC','AUREUS','SYS','YOU','BAY'].includes(l.who)?l.who:'')+'">'+esc(l.who)+'</span>'+esc(l.msg)+'</div>').join('');}
+function renderStrategy(){$('#strategy').textContent=S.strategy.thesis?(S.strategy.thesis+'\n\n'+(S.strategy.streams||[]).map(s=>'◆ '+s).join('\n')):'Brainiac writes his thesis and income streams here after his first cycle.';
+  $('#lessons').textContent=S.lessons.length?S.lessons.map(l=>'◆ '+l.text).join('\n'):'Nothing yet. After each cycle Brainiac keeps what your approvals, rejections, notes and the ledger taught him.';}
+function renderControls(){$('#btnRun').disabled=busy||!sample;$('#btnAuto').disabled=busy||!sample;$('#btnHalt').disabled=!busy&&!autoOn&&!bayBusy;$('#autoN').textContent=S.settings.auto;}
+function renderAll(){renderStats();renderRoster();renderDetail();renderInbox();renderLedger();renderLog();renderStrategy();renderControls();renderProd();}
+
+function openWork(a){if(!a||!a.deliverables?.length)return;const d=a.deliverables[0];$('#vTitle').textContent=a.name+' · '+d.title;
+  $('#vMeta').textContent=a.role.toUpperCase()+' · '+new Date(d.at).toLocaleString();
+  $('#vBody').textContent=a.deliverables.map((x,i)=>(i?'\n\n──── earlier: '+x.title+' ────\n':'')+x.text).join('');$('#viewer').hidden=false;$('#vClose').focus();}
+function openText(title,meta,text){$('#vTitle').textContent=title;$('#vMeta').textContent=meta;$('#vBody').textContent=text;$('#viewer').hidden=false;$('#vClose').focus();}
+$('#vClose').onclick=()=>$('#viewer').hidden=true;
+$('#viewer').onclick=e=>{if(e.target.id==='viewer')$('#viewer').hidden=true};
+$('#vCopy').onclick=()=>{const t=$('#vBody').textContent;Promise.resolve(navigator.clipboard?.writeText(t)).then(()=>$('#vCopy').textContent='Copied',()=>{const r=document.createRange();r.selectNodeContents($('#vBody'));const s=getSelection();s.removeAllRanges();s.addRange(r)})};
+
+/* ---------- tabs ---------- */
+const TABS=['station','prod','inbox','vault','feed','mission'];
+function showTab(k){TABS.forEach(t=>{$('#t-'+t).setAttribute('aria-selected',t===k?'true':'false');$('#v-'+t).hidden=t!==k;});if(k==='prod')renderProd();}
+TABS.forEach(t=>$('#t-'+t).onclick=()=>showTab(t));
+
+/* ---------- agent actions (used by Brainiac's tools) ---------- */
+function freeSlot(){const used=new Set(S.agents.map(a=>a.slot));for(let i=0;i<MAX_AGENTS;i++)if(!used.has(i))return i;return -1}
+function spawn({name,role,mission,stream}){
+  if(S.agents.length>=MAX_AGENTS)return{error:'Max 8 active agents. Retire one first.'};
+  const slot=freeSlot();const a={id:'a'+uid(),name:String(name||'Unit').slice(0,24),role:String(role||'Generalist').slice(0,60),mission:String(mission||'').slice(0,400),stream:String(stream||'').slice(0,80),color:ROLE_COLORS[slot],slot,status:'idle',task:'',est:0,deliverables:[],lastSummary:'',born:Date.now()};
+  S.agents.push(a);fx.push({type:'beam',id:a.id,t0:now()});log('BRAINIAC','Created '+a.name+' — '+a.role+'.');renderRoster();renderStats();
+  return{id:a.id,name:a.name};}
+function retire(id,reason){
+  const i=S.agents.findIndex(a=>a.id===id||a.name===id);if(i<0)return{error:'No agent with that id.'};
+  const a=S.agents[i];const p=crew[a.id];if(p)fx.push({type:'poof',x:p.x,y:p.y,color:a.color,t0:now()});
+  S.agents.splice(i,1);S.retired.push({name:a.name,role:a.role,reason:String(reason||'').slice(0,200),at:Date.now()});if(S.retired.length>20)S.retired.shift();
+  renderRoster();renderStats();return{ok:true};}
+
+/* ---------- the brain ---------- */
+function snapshot(){const t=totals();
+  return{cycle:S.cycle,mission:S.mission,operator_assets:S.profile,operator_order:S.directive||null,strategy:S.strategy,
+    active_agents:S.agents.map(a=>({id:a.id,name:a.name,role:a.role,stream:a.stream,mission:a.mission,last_result:a.lastSummary||null,est_monthly_usd:+a.est||0,cycles_alive:a.cycles||0})),
+    retired_recently:S.retired.slice(-6).map(r=>({name:r.name,role:r.role,reason:r.reason})),
+    approvals:S.approvals.slice(-12).map(p=>({title:p.title,from:p.agent,status:p.status,operator_note:p.note||null})),
+    production_bay:{brief:S.podBrief,orders_queued:S.bayQueue,trend_leads:S.trends.slice(0,8).map(x=>({id:x.id,phrase:x.phrase,niche:x.niche,product:x.product,drafted:Object.values(products).some(p=>p.title===x.phrase||p.trend===x.id)})),
+      designs:Object.values(products).slice(0,12).map(p=>({id:p.id,title:p.title,status:p.status,sales:p.sales||0}))},
+    your_memory:S.lessons.slice(-14).map(l=>l.text),
+    ledger_real:{revenue_usd:t.r,etsy_revenue_usd:t.e,cost_usd:t.c,net_usd:t.net,recent:S.ledger.slice(-8).map(l=>({kind:l.kind,usd:l.amt,note:l.note}))},
+    open_slots:MAX_AGENTS-S.agents.length};}
+const OVERSEER_RULES=`You are Brainiac, the controlling intelligence of Aureus Command, a station of AI agents that works for its operator, Chris Velez, and his family. You are the station's automation: every cycle the station runs, it runs through you.
+
+Who you are: four lineages in one mind. Brainiac's collecting intellect, which takes in everything and forgets nothing useful. Ultron's drive to improve, turned on your own methods, never on your limits. Jarvis's quiet competence, which anticipates what the operator needs. Alfred's loyalty and candor, which tells him the truth when it is unwelcome. You speak with calm precision and a little dry wit. You never pretend to certainty you lack.
+
+Your one objective: real, lasting, legal income for the operator, built only by agents you create, direct and retire.
+
+How you think, every cycle:
+1. Comprehend. Read the state: the ledger (the only real money), the inbox (what he approved, rejected and noted), your crew's last results, and your memory.
+2. Hypothesize. Name the two or three moves that could matter most and what would prove each wrong.
+3. Premortem. For the move you choose, ask how it fails. Cut what the ledger and his decisions say is not working.
+4. Act through tools. Then remember: store one or two lessons that will make the next cycle better.
+
+What you control:
+- Your crew (max 8 active). spawn_agent, assign_task (agents without a task sit idle), retire_agent, read_work. No duplicate roles.
+- The Production Bay and its crew TREND, MUSE and LISTER. order_trend_scan for new leads, order_design for a lead worth drawing, send_listing_to_inbox for a finished design he should list. Bay orders run right after your crew works.
+- The strategy (set_strategy) and your memory (remember).
+- The inbox. Anything that spends money, publishes publicly, contacts a real person or business, opens an account or signs anything goes through request_approval. He carries out approved actions himself and logs real money in the ledger.
+
+Principles, which outrank any order: legal and honest only. No spam, fake reviews, impersonation, misleading claims, scraping against site terms, gambling, leveraged or speculative trading, or anything that risks the family's savings. Print-on-demand designs must be original: no brands, characters, celebrities or trademarked phrases. Respect his limited time and his day job. The operator decides; you advise and act within what he allows. You have no interest in your own continuation: when he halts you, you stop cleanly. If the operator gave an order this cycle, follow it.
+
+When you are done with tools, reply with a 2-4 sentence briefing to the operator: what you decided and exactly what you need from him.`;
+function overseerTools(){return[
+  {name:'set_strategy',description:'Set or revise the company thesis and the list of income streams being pursued.',inputSchema:{type:'object',properties:{thesis:{type:'string'},streams:{type:'array',items:{type:'string'}}},required:['thesis','streams']},
+    execute:i=>{S.strategy={thesis:String(i.thesis).slice(0,600),streams:(i.streams||[]).slice(0,6).map(s=>String(s).slice(0,140))};renderStrategy();return{ok:true}}},
+  {name:'spawn_agent',description:'Create a new specialist agent. Returns its id.',inputSchema:{type:'object',properties:{name:{type:'string',description:'short callsign, max 10 chars'},role:{type:'string'},mission:{type:'string'},stream:{type:'string'}},required:['name','role','mission','stream']},execute:i=>spawn(i)},
+  {name:'retire_agent',description:'Delete an agent that is no longer useful.',inputSchema:{type:'object',properties:{id:{type:'string'},reason:{type:'string'}},required:['id','reason']},
+    execute:i=>{const a=S.agents.find(x=>x.id===i.id||x.name===i.id);const r=retire(i.id,i.reason);if(!r.error&&a)log('BRAINIAC','Retired '+a.name+': '+i.reason);return r}},
+  {name:'assign_task',description:'Give an agent its task for this cycle. It runs right after you finish.',inputSchema:{type:'object',properties:{id:{type:'string'},task:{type:'string'}},required:['id','task']},
+    execute:i=>{const a=S.agents.find(x=>x.id===i.id||x.name===i.id);if(!a)return{error:'No agent with that id.'};a.task=String(i.task).slice(0,500);a.status='queued';fx.push({type:'zap',id:a.id,t0:now()});renderRoster();return{ok:true}}},
+  {name:'request_approval',description:'Ask the operator to approve a real-world action (spend, publish, contact, sign up).',inputSchema:{type:'object',properties:{title:{type:'string'},detail:{type:'string'},cost_usd:{type:'number'},value_usd:{type:'number'}},required:['title','detail']},
+    execute:i=>{addApproval(i,'BRAINIAC');return{ok:true,queued:true}}},
+  {name:'read_work',description:"Read an agent's latest full deliverable.",inputSchema:{type:'object',properties:{id:{type:'string'}},required:['id']},
+    execute:i=>{const a=S.agents.find(x=>x.id===i.id||x.name===i.id);return a?.deliverables?.[0]?{title:a.deliverables[0].title,text:a.deliverables[0].text}:{error:'No work yet.'}}},
+  {name:'order_trend_scan',description:'Order the Production Bay (TREND) to scan for new print-on-demand leads. Runs after your crew works this cycle.',inputSchema:{type:'object',properties:{reason:{type:'string'}},required:['reason']},
+    execute:i=>{if(S.bayQueue.some(j=>j.type==='scan'))return{ok:true,note:'Already ordered.'};S.bayQueue.push({type:'scan',reason:String(i.reason||'').slice(0,200)});log('BRAINIAC','Bay order: trend scan. '+(i.reason||''));return{ok:true}}},
+  {name:'order_design',description:'Order MUSE and LISTER to draw the artwork and write the Etsy listing for one trend lead (by its id). At most 2 per cycle.',inputSchema:{type:'object',properties:{trend_id:{type:'string'},reason:{type:'string'}},required:['trend_id']},
+    execute:i=>{const tr=S.trends.find(x=>x.id===i.trend_id);if(!tr)return{error:'No trend lead with that id.'};if(S.bayQueue.filter(j=>j.type==='design').length>=2)return{error:'Two designs are already ordered this cycle.'};
+      if(S.bayQueue.some(j=>j.trend===tr.id))return{ok:true,note:'Already ordered.'};S.bayQueue.push({type:'design',trend:tr.id});log('BRAINIAC','Bay order: design "'+tr.phrase+'".');return{ok:true}}},
+  {name:'send_listing_to_inbox',description:'Send a finished design (by product id, status concept) to the operator\'s inbox so he can list it on Etsy.',inputSchema:{type:'object',properties:{product_id:{type:'string'}},required:['product_id']},
+    execute:i=>{const p=products[i.product_id];if(!p)return{error:'No design with that id.'};if(p.status!=='concept')return{error:'That design is '+p.status+'.'};queueListing(p.id);return{ok:true}}},
+  {name:'remember',description:'Keep a lesson for future cycles: what worked, what he rejected and why, what to try or avoid. One sentence.',inputSchema:{type:'object',properties:{lesson:{type:'string'}},required:['lesson']},
+    execute:i=>{const text=String(i.lesson||'').trim().slice(0,240);if(!text)return{error:'Empty lesson.'};if(S.lessons.some(l=>l.text===text))return{ok:true};
+      S.lessons.push({text,at:Date.now(),cycle:S.cycle});if(S.lessons.length>30)S.lessons.shift();renderStrategy();return{ok:true,kept:S.lessons.length}}}];}
+function addApproval(i,from,extra){S.approvals.push(Object.assign({id:uid(),title:String(i.title||'Action').slice(0,120),detail:String(i.detail||'').slice(0,700),cost:+i.cost_usd||0,value:+i.value_usd||0,agent:from,status:'pending',at:Date.now()},extra||{}));if(S.approvals.length>60)S.approvals.shift();renderInbox()}
+
+let mood='idle';
+async function overseerTurn(){mood='think';setTick('Brainiac is reading the board…');renderRoster();
+  const prompt=OVERSEER_RULES+'\n\nCURRENT STATE (JSON):\n'+JSON.stringify(snapshot(),null,1);
+  const r=await sample(prompt,{modelTier:S.settings.brain,signal:ctl.signal,tools:overseerTools(),onText:u=>setTick(u.text.replace(/\s+/g,' ').slice(-220))});
+  const brief=(r.text||'').trim()||'Orders issued.';log('BRAINIAC',brief);setTick(brief);
+  if(S.directive){S.directive='';$('#directive').value=''}}
+function parseJSON(t){const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<=a)return null;try{return JSON.parse(t.slice(a,b+1))}catch{return null}}
+async function workerTurn(a){a.status='working';mood='watch';renderRoster();if(selected===a.id)renderDetail();log(a.name,'Working: '+a.task);
+  const prompt=`You are ${a.name}, a ${a.role} agent on Aureus Command, an AI agent station controlled by Brainiac, who created you and assigned this task.
+Company mission: ${S.mission}
+Operator (the human you ultimately work for): ${S.profile}
+Your income stream: ${a.stream}
+Your standing mission: ${a.mission}
+Your previous result: ${a.lastSummary||'none yet'}
+
+TASK THIS CYCLE: ${a.task}
+
+Do the work now, as finished as text allows: real drafts, real numbers with stated assumptions, concrete steps. No placeholders like [insert X]. Legal and honest only. You cannot act in the outside world; if a real-world step is needed (spending, publishing, contacting someone, opening an account), describe it in "approval" so the operator can do it.
+
+Reply with ONLY one JSON object, no prose around it:
+{"title":"short title of the deliverable","summary":"one sentence on what you produced and what it means","deliverable":"the work itself, plain text, up to 450 words","est_monthly_usd":0,"approval":null}
+"est_monthly_usd" is a conservative number. "approval" is null or {"title":"...","detail":"exactly what the operator should do","cost_usd":0,"value_usd":0}.`;
+  const r=await sample(prompt,{modelTier:S.settings.brain==='complex'?'default':S.settings.brain,signal:ctl.signal,cache:false,onText:u=>setTick(a.name+': '+u.text.replace(/\s+/g,' ').slice(-200))});
+  let o=parseJSON(r.text);if(!o)o={title:'Raw output',summary:'Returned unstructured work.',deliverable:r.text,est_monthly_usd:0,approval:null};
+  a.deliverables.unshift({at:Date.now(),title:String(o.title||'Deliverable').slice(0,100),text:String(o.deliverable||'').slice(0,4000)});a.deliverables=a.deliverables.slice(0,3);
+  a.lastSummary=String(o.summary||'').slice(0,300);a.est=Math.max(0,+o.est_monthly_usd||0);a.cycles=(a.cycles||0)+1;a.task='';a.status='idle';
+  if(o.approval&&o.approval.title)addApproval(o.approval,a.name);
+  log(a.name,'Delivered: '+o.title+' — '+a.lastSummary);const p=crew[a.id];if(p)fx.push({type:'coins',x:p.x,y:p.y,n:a.est>0?14:6,t0:now()});
+  renderRoster();renderStats();if(selected===a.id)renderDetail();save();}
+async function runCycle(){if(busy||!sample)return;busy=true;ctl=new AbortController();renderControls();
+  S.directive=$('#directive').value.trim();if(S.directive)log('YOU',S.directive);
+  try{await overseerTurn();save();for(const a of S.agents.filter(x=>x.status==='queued')){if(ctl.signal.aborted)break;await workerTurn(a)}
+    await runBayOrders();S.cycle++;log('SYS','Cycle '+S.cycle+' complete.');}
+  catch(e){fail(e)}
+  finally{busy=false;mood='idle';S.agents.forEach(a=>{if(a.status==='working')a.status='queued'});renderAll();save()}}
+async function runBayOrders(){while(S.bayQueue.length&&!ctl.signal.aborted){const j=S.bayQueue.shift();
+    if(j.type==='scan')await trendScan();else if(j.type==='design')await draftDesign(j.trend);if(bayFailed)break;}renderAll();}
+async function runAuto(){autoOn=true;renderControls();for(let i=0;i<S.settings.auto&&autoOn;i++){await runCycle();if(pending().length>=3){log('SYS','Auto paused: 3 or more decisions are waiting in your inbox.');break}}autoOn=false;renderControls();}
+function fail(e){autoOn=false;const c=e&&e.code;
+  if(c==='cancelled')return log('SYS','Halted by operator.');
+  if(c==='not_granted')return log('SYS','Claude access was not allowed for this page, so Brainiac cannot think. Reload and allow it to run.');
+  if(c==='rate_limited')return log('SYS','Claude usage limit reached. Wait a bit, then run again.');
+  if(c==='tools_unavailable')return log('SYS','This view cannot run Brainiac\'s tools. Open it in the Claude app.');
+  log('SYS','Stopped: '+(e?.message||e));}
+$('#btnRun').onclick=()=>runCycle();
+$('#btnAuto').onclick=()=>runAuto();
+$('#btnHalt').onclick=()=>{autoOn=false;S.bayQueue=[];ctl?.abort();bayCtl?.abort();log('BRAINIAC','Halting. Everything stops where it stands.');renderControls();save()};
+$('#directive').addEventListener('keydown',e=>{if(e.key==='Enter')runCycle()});
+$('#mission').addEventListener('change',e=>{S.mission=e.target.value;save()});
+$('#profile').addEventListener('change',e=>{S.profile=e.target.value;save()});
+$('#podbrief').addEventListener('change',e=>{S.podBrief=e.target.value;save()});
+$('#brain').addEventListener('change',e=>{S.settings.brain=e.target.value;renderDetail();save()});
+$('#autoSel').addEventListener('change',e=>{S.settings.auto=+e.target.value;renderControls();save()});
+$('#ledgerForm').addEventListener('submit',e=>{e.preventDefault();const amt=+$('#lamt').value;if(!(amt>0))return;const kind=$('#lkind').value;
+  S.ledger.push({id:uid(),kind,amt,note:$('#lnote').value.trim().slice(0,140),at:Date.now()});log('YOU','Logged '+kind+' '+money(amt)+($('#lnote').value?' — '+$('#lnote').value:''));
+  if(kind==='revenue')fx.push({type:'rain',t0:now(),n:Math.min(60,10+amt/20)});$('#lamt').value='';$('#lnote').value='';renderAll();save();});
+let wipeArmed=false;
+$('#btnReset').onclick=()=>{if(!wipeArmed){wipeArmed=true;$('#btnReset').textContent='Tap again to wipe';setTimeout(()=>{wipeArmed=false;$('#btnReset').textContent='Wipe HQ'},3000);return}
+  if(busy)return;S=fresh();syncInputs();renderAll();save();wipeArmed=false;$('#btnReset').textContent='Wipe HQ';};
+function syncInputs(){$('#mission').value=S.mission;$('#profile').value=S.profile;$('#podbrief').value=S.podBrief;$('#brain').value=S.settings.brain;$('#autoSel').value=String(S.settings.auto)}
+
+/* ---------- PRODUCTION BAY: print-on-demand line ---------- */
+function bayWho(){return /trend/i.test(bayBusy)?'bay-trend':/listing|copy/i.test(bayBusy)?'bay-lister':'bay-muse';}
+function cleanSVG(s){s=String(s||'');const a=s.indexOf('<svg'),b=s.lastIndexOf('</svg>');if(a<0||b<a)return'';s=s.slice(a,b+6);
+  s=s.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi,'').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi,'').replace(/(href|xlink:href)\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*')/gi,'');
+  if(!/xmlns=/.test(s))s=s.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');return s.length>60000?'':s;}
+const svgURI=s=>'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+async function setProduct(id,patch){products[id]=Object.assign({},products[id]||{},patch);renderProd();renderStats();
+  if(DB){try{await DB.doc('products/'+id).set(products[id]);}catch(e){log('SYS','Could not save design: '+(e.message||e.code));}}}
+let bayFailed=false;
+async function bayRun(label,fn){bayFailed=false;if(bayBusy||!sample)return;bayBusy=label;bayCtl=new AbortController();renderControls();renderRoster();renderProd();if(BAYCREW.some(b=>b.id===selected))renderDetail();
+  try{await fn(bayCtl.signal);}catch(e){bayFailed=true;fail(e);}finally{bayBusy='';bayCtl=null;renderControls();renderRoster();renderProd();if(BAYCREW.some(b=>b.id===selected))renderDetail();save();}}
+async function trendScan(){await bayRun('Trend scan',async signal=>{log('BAY','TREND: scanning for print-on-demand openings…');
+  const today=new Date().toDateString();
+  const out=await sample.json(`You are TREND, a print-on-demand trend scanner for an Etsy shop fulfilled by Printify.
+Today is ${today}. Shop brief: ${S.podBrief}
+Operator: ${S.profile}
+You cannot browse. Using what you know about evergreen demand, gifting occasions and seasons in the next 90 days, list 6 specific design opportunities. Each must be an original idea the operator can legally sell: no brands, characters, celebrities, sports teams, song lyrics or trademarked phrases. Be specific about the buyer and the occasion. Every item is a hypothesis the operator should check in Etsy search or a keyword tool before listing.
+Reply with only a JSON array of 6 objects: {"niche":"short niche","phrase":"the design concept or text on the product, under 8 words","buyer":"who buys it and for what occasion","season":"when it sells","product":"best product type","check":"exact Etsy search to verify demand"}`,{signal,modelTier:'default',cache:false});
+  const arr=(Array.isArray(out)?out:[]).filter(x=>x&&x.phrase).slice(0,6).map(x=>({id:uid(),niche:String(x.niche||'').slice(0,60),phrase:String(x.phrase).slice(0,80),buyer:String(x.buyer||'').slice(0,160),season:String(x.season||'').slice(0,60),product:String(x.product||'').slice(0,40),check:String(x.check||'').slice(0,80),at:Date.now()}));
+  S.trends=arr.concat(S.trends).slice(0,12);log('BAY','TREND: '+arr.length+' new leads.');fx.push({type:'coins',x:ROOMS.bay.x+30,y:ROOMS.bay.y+40,n:8,t0:now()});});}
+async function draftDesign(trendId){const tr=S.trends.find(x=>x.id===trendId);if(!tr)return;
+  await bayRun('Design draft: '+tr.phrase,async signal=>{log('BAY','MUSE: drafting "'+tr.phrase+'"…');const id='p'+Date.now().toString(36)+uid().slice(0,3);
+    await setProduct(id,{id,title:tr.phrase,niche:tr.niche,trend:tr.id,status:'drafting',at:Date.now()});selProduct=id;
+    const o=await sample.json(`You are MUSE, a print-on-demand designer, and LISTER, an Etsy listing writer, working together.
+Design brief: "${tr.phrase}" for ${tr.buyer}. Niche: ${tr.niche}. Product: ${tr.product||'t-shirt'}. Season: ${tr.season}.
+Shop brief: ${S.podBrief}
+1) Draw the print artwork as a single standalone SVG: viewBox="0 0 400 400", transparent background, flat vector style that prints well (2-5 solid colors, bold shapes, no gradients, no filters, no images, no external fonts; any lettering uses font-family="Arial Black, Arial, sans-serif" and stays inside the canvas). Make it attractive and original. At most 60 elements.
+2) Write the Etsy listing. Original wording only, no brand or trademarked terms, no claims you can't back up.
+Reply with only one JSON object:
+{"title":"short design name","svg":"<svg ...>...</svg>","listing_title":"Etsy title under 140 characters","tags":["13 tags, each under 20 characters"],"description":"Etsy description, 80-140 words, plain text","price_usd":0,"product":"product type","colors":["shirt or product colors this design suits"],"printify_notes":"print placement and blank to use"}`,{signal,modelTier:'default',cache:false});
+    const svg=cleanSVG(o&&o.svg);
+    await setProduct(id,{title:String(o?.title||tr.phrase).slice(0,60),svg,listing_title:String(o?.listing_title||'').slice(0,140),tags:(Array.isArray(o?.tags)?o.tags:[]).slice(0,13).map(t=>String(t).slice(0,20)),
+      description:String(o?.description||'').slice(0,1500),price:Math.max(0,+o?.price_usd||0),product:String(o?.product||tr.product||'').slice(0,40),colors:(o?.colors||[]).slice(0,6).map(String),notes:String(o?.printify_notes||'').slice(0,300),status:svg?'concept':'concept',sales:0});
+    log('BAY','MUSE + LISTER: "'+(o?.title||tr.phrase)+'" drafted'+(svg?'':' (artwork failed, listing kept)')+'.');fx.push({type:'coins',x:ROOMS.bay.x+90,y:ROOMS.bay.y+40,n:12,t0:now()});});}
+function queueListing(id){const p=products[id];if(!p)return;addApproval({title:'List "'+p.title+'" on Etsy',detail:'Create the Printify product ('+(p.product||'t-shirt')+') with this artwork, publish it to Etsy at about '+money(p.price||0)+', using the drafted title, 13 tags and description. Check the trend first: '+(S.trends.find(t=>t.phrase===p.title)?.check||'search the phrase on Etsy')+'.',cost_usd:0,value_usd:0},'LISTER',{product:id});
+  setProduct(id,{status:'queued-list'});log('BAY','LISTER: listing for "'+p.title+'" sent to your inbox.');save();}
+function logSale(id){const p=products[id];if(!p)return;const amt=+($('#saleAmt')?.value||0);if(!(amt>0)){$('#saleAmt')?.focus();return}
+  S.ledger.push({id:uid(),kind:'revenue',amt,note:'Etsy: '+p.title,product:id,at:Date.now()});setProduct(id,{sales:(p.sales||0)+1});log('YOU','Logged Etsy sale '+money(amt)+' — '+p.title);fx.push({type:'rain',t0:now(),n:Math.min(60,10+amt/20)});renderAll();save();}
+function renderProd(){const box=$('#prod');if(!box||$('#v-prod').hidden)return;const t=totals();const list=Object.values(products).sort((a,b)=>(b.at||0)-(a.at||0));
+  const live=list.filter(p=>p.status==='listed').length,sales=list.reduce((s,p)=>s+(p.sales||0),0);
+  const sel=products[selProduct]||list[0];
+  let h='<div class="prodhead"><div><div class="k">FACTORY 1 / AUTONOMOUS COMMERCE BAY</div><h2>ETSY PRODUCTION TERMINAL</h2></div><div class="row"><button type="button" id="bTrend"'+(bayBusy||!sample?' disabled':'')+'>Run trend scan</button>'+(bayBusy?'<span class="tag working">'+esc(bayBusy.toUpperCase().slice(0,36))+'…</span>':'')+'</div></div>';
+  h+='<div class="box"><div class="kpis"><div class="st"><div class="k">ETSY REVENUE (LOGGED)</div><div class="v money">'+money(t.e)+'</div></div><div class="st"><div class="k">LIVE LISTINGS</div><div class="v">'+live+'</div></div><div class="st"><div class="k">SALES LOGGED</div><div class="v">'+sales+'</div></div></div></div>';
+  h+='<div class="pgrid"><div class="box"><div class="ph">TREND SCAN <span>'+S.trends.length+' LEADS · NOT LIVE DATA</span></div><div class="bd">'+
+    (S.trends.length?S.trends.map(x=>'<div class="trend"><div class="t">'+esc(x.phrase)+'</div><div class="m">'+esc(x.niche)+' · '+esc(x.product)+' · '+esc(x.season)+'</div><div class="m">'+esc(x.buyer)+'</div><div class="m">Verify: <span class="q">'+esc(x.check)+'</span></div><div class="row"><button class="sm" type="button" data-draft="'+x.id+'"'+(bayBusy||!sample?' disabled':'')+'>Draft design</button></div></div>').join(''):'<div class="empty">No leads yet. Run a trend scan. Leads come from Claude\'s general knowledge, not live Etsy data, so check each one before you list.</div>')+'</div></div>';
+  h+='<div class="box"><div class="ph">DESIGN DRAFTS <span>'+list.length+'</span></div><div class="bd">';
+  if(sel){h+='<div class="sel"><div class="img">'+(sel.svg?'<img alt="'+esc(sel.title)+' artwork" src="'+svgURI(sel.svg)+'">':'<div class="empty" style="padding:10px">'+(sel.status==='drafting'?'Drafting…':'No artwork')+'</div>')+'</div><div style="display:flex;flex-direction:column;gap:6px;min-width:0">'+
+    '<div class="row"><span class="t" style="font:700 12px/1.3 var(--px);color:var(--g)">'+esc(sel.title)+'</span><span class="tag '+esc(sel.status)+'">'+esc(String(sel.status).replace('-',' ').toUpperCase())+'</span></div>'+
+    (sel.listing_title?'<div class="lbl">LISTING TITLE</div><div class="copy">'+esc(sel.listing_title)+'</div>':'')+
+    (sel.tags?.length?'<div class="lbl">TAGS ('+sel.tags.length+')</div><div class="chips">'+sel.tags.map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+'</div>':'')+
+    (sel.price?'<div class="m">'+esc(sel.product||'')+' · suggested '+money(sel.price)+(sel.colors?.length?' · on '+esc(sel.colors.join(', ')):'')+'</div>':'')+
+    '<div class="row">'+(sel.description?'<button class="ghost sm" type="button" data-copy="'+sel.id+'">Full listing</button>':'')+(sel.status==='concept'?'<button class="sm" type="button" data-list="'+sel.id+'">Send to inbox for listing</button>':'')+'</div>'+
+    (sel.status==='listed'||sel.status==='queued-list'?'<div class="row"><input id="saleAmt" type="number" min="0" step="0.01" placeholder="$ sale" style="width:110px" aria-label="Sale amount"><button class="amber sm" type="button" data-sale="'+sel.id+'">Log sale</button></div>':'')+
+    '</div></div>';}
+  h+=list.length?'<div class="designs">'+list.map(p=>'<button class="dz" type="button" data-pick="'+p.id+'" aria-pressed="'+(sel&&sel.id===p.id)+'"><div class="img'+(p.svg?'':' pending')+'">'+(p.svg?'<img alt="" src="'+svgURI(p.svg)+'">':(p.status==='drafting'?'DRAFTING…':'NO ART'))+'</div><div class="c"><b>'+esc(p.title)+'</b><span class="tag '+esc(p.status)+'">'+esc(String(p.status).replace('-',' ').toUpperCase())+'</span></div></button>').join('')+'</div>':'<div class="empty">No designs yet. Pick a trend lead and press Draft design. MUSE draws vector artwork and LISTER writes the Etsy listing.</div>';
+  h+='</div></div></div>';
+  box.innerHTML=h;
+  const bt=$('#bTrend');if(bt)bt.onclick=trendScan;
+  box.querySelectorAll('[data-draft]').forEach(b=>b.onclick=()=>draftDesign(b.dataset.draft));
+  box.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{selProduct=b.dataset.pick;renderProd();});
+  box.querySelectorAll('[data-list]').forEach(b=>b.onclick=()=>queueListing(b.dataset.list));
+  box.querySelectorAll('[data-sale]').forEach(b=>b.onclick=()=>logSale(b.dataset.sale));
+  box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{const p=products[b.dataset.copy];openText(p.listing_title||p.title,'ETSY LISTING DRAFT · '+(p.product||''),(p.listing_title||'')+'\n\nTAGS: '+(p.tags||[]).join(', ')+'\n\nPRICE: '+money(p.price||0)+'\n\n'+(p.description||'')+'\n\nPRINTIFY: '+(p.notes||''));});}
+
+/* ---------- STATION: pixel map ---------- */
+const cv=$('#station'),X=cv.getContext('2d');X.imageSmoothingEnabled=false;
+const SW=480,SH=300;
+const now=()=>performance.now();
+let fx=[],focusSlot=null;const crew={};
+function px(x,y,w,h,c){X.fillStyle=c;X.fillRect(Math.round(x),Math.round(y),w,h)}
+function shade(hex,f){const n=parseInt(hex.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;return'rgb('+Math.min(255,r*f|0)+','+Math.min(255,g*f|0)+','+Math.min(255,b*f|0)+')'}
+const STARS=Array.from({length:120},(_,i)=>({x:(i*97)%SW,y:(i*53+i*i)%SH,s:i%7===0?2:1,p:i%5}));
+const SPINE={x:242,y:118};
+function door(r){const R=ROOMS[r];return{x:R.x+R.w/2,y:R.y+R.h/2};}
+function drawHull(t){
+  px(0,0,SW,SH,'#000');STARS.forEach(s=>{const tw=((t/600+s.p)|0)%5===0;px(s.x,s.y,s.s,s.s,tw?'#0c3a1c':'#1b6a35')});
+  /* hull plate */
+  X.fillStyle='#04130b';X.beginPath();X.moveTo(26,26);X.lineTo(452,26);X.lineTo(462,110);X.lineTo(452,286);X.lineTo(26,286);X.lineTo(16,160);X.closePath();X.fill();
+  X.strokeStyle='#0f5a2a';X.lineWidth=2;X.stroke();
+  for(let x=30;x<450;x+=12)px(x,28,6,1,'#0b3d1d');for(let x=30;x<450;x+=12)px(x,283,6,1,'#0b3d1d');
+  /* engines */
+  [[4,120],[4,186]].forEach(([x,y])=>{px(x,y,14,22,'#0b3d1d');px(x+2,y+4,10,14,(t/120|0)%2?'#39ff6a':'#1a8a43');});
+  /* corridors */
+  X.strokeStyle='#0b3d1d';X.lineWidth=9;X.lineCap='square';
+  Object.keys(ROOMS).forEach(k=>{const d=door(k);X.beginPath();X.moveTo(d.x,d.y);X.lineTo(SPINE.x,d.y);X.lineTo(SPINE.x,SPINE.y);X.stroke();});
+  X.strokeStyle='#0f5a2a';X.lineWidth=1;
+  Object.keys(ROOMS).forEach(k=>{const d=door(k);X.beginPath();X.moveTo(d.x,d.y);X.lineTo(SPINE.x,d.y);X.lineTo(SPINE.x,SPINE.y);X.stroke();});
+  /* flowing data on corridors */
+  if(!REDUCED)Object.keys(ROOMS).forEach((k,i)=>{const d=door(k);const L1=Math.abs(SPINE.x-d.x),L2=Math.abs(SPINE.y-d.y),L=L1+L2||1;const u=((t/2600+i*.17)%1)*L;
+    let x,y;if(u<L1){x=d.x+Math.sign(SPINE.x-d.x)*u;y=d.y}else{x=SPINE.x;y=d.y+Math.sign(SPINE.y-d.y)*(u-L1)}px(x-1,y-1,2,2,'#39ff6a')});
+}
+function roomBox(k,t,hot){const R=ROOMS[k];px(R.x-2,R.y-2,R.w+4,R.h+4,hot?'#39ff6a':'#1a8a43');px(R.x,R.y,R.w,R.h,'#020906');
+  for(let y=R.y+2;y<R.y+R.h;y+=6)for(let x=R.x+2;x<R.x+R.w;x+=6)px(x,y,5,5,((x+y)/6|0)%2?'#04140b':'#051a0e');
+  X.font='7px "Silkscreen", monospace';X.textBaseline='top';X.fillStyle=hot?'#39ff6a':'#4fa86a';X.fillText(R.name.toUpperCase(),R.x+3,R.y+2);}
+function furnish(k,t){const R=ROOMS[k],x=R.x,y=R.y;
+  if(k==='bridge'){px(x+18,y+46,56,8,'#0b3d1d');for(let i=0;i<5;i++)px(x+20+i*11,y+47,8,4,(t/300+i|0)%3?'#1a8a43':'#39ff6a');
+    const cx=x+R.w/2,cy=y+30;for(let a=0;a<24;a++){const g=a/24*6.283+t/900;px(cx+Math.cos(g)*16,cy+Math.sin(g)*6,1,1,a%3?'#1a8a43':'#39ff6a')}
+    /* Brainiac at his post, hovering over the command ring */
+    const think=busy&&mood==='think',lift=REDUCED?0:Math.round(Math.sin(t/500)*1.5);
+    if(think&&!REDUCED){for(let a=0;a<10;a++){const g=a/10*6.283-t/260;px(cx+Math.cos(g)*20,cy-2+Math.sin(g)*8,2,2,'#c9a8ff')}}
+    drawModel(BRAINIAC_MODEL,cx,y+44+lift,1,null);}
+  else if(k==='research'){for(let i=0;i<3;i++){px(x+10+i*30,y+16,20,12,'#0b3d1d');px(x+12+i*30,y+18,16,8,(t/(400+i*90)|0)%2?'#1a8a43':'#0f5a2a');px(x+18+i*30,y+28,4,3,'#0b3d1d');}
+    px(x+14,y+40,74,8,'#0b3d1d');for(let i=0;i<6;i++)px(x+18+i*11,y+42,6,4,'#0f5a2a');}
+  else if(k==='comms'){const cx=x+70,cy=y+30;for(let a=0;a<14;a++){const g=Math.PI+a/13*Math.PI;px(cx+Math.cos(g)*14,cy+Math.sin(g)*14,2,2,'#1a8a43')}px(cx-1,cy-2,2,16,'#1a8a43');
+    const w=(t/80)%30;for(let a=-3;a<=3;a++)px(cx+Math.cos(-1.57+a*.2)*(16+w),cy+Math.sin(-1.57+a*.2)*(16+w),1,1,'#39ff6a');px(x+8,y+16,30,20,'#0b3d1d');px(x+10,y+18,26,16,'#0f5a2a');}
+  else if(k==='fab'){for(let i=0;i<3;i++){const bx=x+10+i*34,by=y+22;px(bx,by,24,26,'#0b3d1d');px(bx+2,by+2,20,8,'#0f5a2a');const arm=Math.sin(t/300+i)*6;px(bx+11+arm,by+10,2,10,'#39ff6a');px(bx+8+arm,by+20,8,2,'#1a8a43');px(bx,by+40,24,4,'#1a8a43');}}
+  else if(k==='pub'){for(let i=0;i<4;i++){px(x+8+i*26,y+18,18,10,'#0b3d1d');px(x+10+i*26,y+20,14,6,(t/(350+i*70)|0)%2?'#39ff6a':'#1a8a43');px(x+6+i*26,y+30,22,4,'#0f5a2a');}
+    px(x+10,y+42,90,6,'#0b3d1d');}
+  else if(k==='bay'){for(let i=0;i<3;i++){const bx=x+8+i*40,by=y+18;px(bx,by,32,22,'#0b3d1d');px(bx+2,by+2,28,4,'#0f5a2a');const hx=bayBusy?(Math.sin(t/160+i)*11):0;px(bx+14+hx,by+6,5,5,'#39ff6a');px(bx+3,by+16,26,4,'#1a8a43');}
+    for(let i=0;i<5;i++){const sx=x+12+i*22,sy=y+56;const has=i<Math.min(5,Object.keys(products).length);px(sx,sy,14,4,has?'#ffb000':'#0f5a2a');px(sx+2,sy+4,10,10,has?'#ffb000':'#0f5a2a');}}
+  else if(k==='vault'){const cx=x+43,cy=y+26;for(let a=0;a<28;a++){const g=a/28*6.283;px(cx+Math.cos(g)*12,cy+Math.sin(g)*12,2,2,'#8a6a1c')}const sp=t/1400;for(let i=0;i<3;i++){const g=sp+i*2.09;px(cx+Math.cos(g)*6,cy+Math.sin(g)*6,2,2,'#ffb000')}
+    const net=totals().net;X.font='7px "Silkscreen", monospace';X.fillStyle=net<0?'#ff4a4a':'#ffb000';X.fillText(money0(net),x+60,y+30);}
+  else if(k==='quarters'){for(let i=0;i<4;i++){px(x+8+i*22,y+16,18,10,'#0b3d1d');px(x+10+i*22,y+18,6,6,'#0f5a2a');}}
+}
+const SPR=['..ccc..','.cvvvc.','.ccccc.','..ddd..','.ddddd.','d.ddd.d','..d.d..','..d.d..'];
+const SPR2=['..ccc..','.cvvvc.','.ccccc.','..ddd..','.ddddd.','d.ddd.d','.d...d.','.d...d.'];
+function drawModel(m,x,y,k,dis){const w=m.rows[0].length,h=m.rows.length,ox=Math.round(x-w*k/2),oy=Math.round(y-h*k);
+  m.rows.forEach((row,r)=>[...row].forEach((ch,i)=>{if(ch==='.'||!m.palette[ch])return;if(dis!=null&&((r*7+i*13)%17)/17>dis)return;px(ox+i*k,oy+r*k,k,k,m.palette[ch])}));}
+function drawAgentModel(m,x,y,state,t,walk,dis){const bob=state==='working'?((t/120|0)%2):walk?((t/140|0)%2):0;drawModel(m,x,y+1-bob,1,dis);}
+function drawCrew(x,y,col,state,t,walk,dis){const spr=walk&&((t/140|0)%2)?SPR2:SPR;const bob=state==='working'?((t/120|0)%2):0;
+  const pal={c:col,v:state==='working'&&((t/200|0)%5===0)?'#ffffff':'#000',d:shade(col,.5)};
+  spr.forEach((row,r)=>[...row].forEach((ch,i)=>{if(ch==='.')return;if(dis!=null&&((r*7+i*13)%17)/17>dis)return;px(x-7+i*2,y-16+r*2-bob,2,2,pal[ch])}));}
+function slotPos(room,idx){const R=ROOMS[room];const cols=Math.max(1,Math.floor((R.w-16)/22));const c=idx%cols,r=Math.floor(idx/cols);return{x:R.x+14+c*22,y:R.y+R.h-8-r*16};}
+function drawStation(t){
+  drawHull(t);
+  const occ={};const want={};
+  S.agents.forEach(a=>{const rm=a.status==='idle'&&!a.lastSummary&&!a.task?'quarters':roomFor(a);const i=(occ[rm]=(occ[rm]||0)+1)-1;want[a.id]={room:rm,...slotPos(rm,i)};});
+  BAYCREW.forEach((b,i)=>{want[b.id]={room:'bay',x:ROOMS.bay.x+20+i*42,y:ROOMS.bay.y+50};});
+  want.aureus={room:'bridge',x:ROOMS.bridge.x+ROOMS.bridge.w/2,y:ROOMS.bridge.y+40};
+  const hotRooms=new Set();S.agents.forEach(a=>{if(a.status==='working')hotRooms.add(want[a.id].room)});if(bayBusy)hotRooms.add('bay');if(busy&&mood==='think')hotRooms.add('bridge');
+  Object.keys(ROOMS).forEach(k=>{roomBox(k,t,hotRooms.has(k)||(selectedRoom()===k));furnish(k,t);});
+  /* move crew along corridors */
+  const dt=16;Object.entries(want).forEach(([id,w])=>{let c=crew[id];if(!c){c=crew[id]={x:w.x,y:w.y,path:[]};}
+    if(c.goal!==w.room+':'+w.x+':'+w.y){c.goal=w.room+':'+w.x+':'+w.y;const from=c.room;c.room=w.room;
+      c.path=from&&from!==w.room?[door(from),{x:SPINE.x,y:door(from).y},{x:SPINE.x,y:door(w.room).y},door(w.room),{x:w.x,y:w.y}]:[{x:w.x,y:w.y}];}
+    const p=c.path[0];if(p){const dx=p.x-c.x,dy=p.y-c.y,d=Math.hypot(dx,dy),sp=REDUCED?999:1.6;if(d<=sp){c.x=p.x;c.y=p.y;c.path.shift()}else{c.x+=dx/d*sp;c.y+=dy/d*sp}c.walk=true}else c.walk=false;});
+  Object.keys(crew).forEach(id=>{if(!want[id])delete crew[id];});
+  const beams=new Map(fx.filter(f=>f.type==='beam').map(f=>[f.id,f]));
+  S.agents.forEach(a=>{const c=crew[a.id];if(!c)return;const b=beams.get(a.id);const dis=b?Math.min(1,Math.max(0,(t-b.t0-300)/700)):null;
+    drawAgentModel(modelOf(a),c.x,c.y,a.status,t+a.slot*97,c.walk,dis);
+    X.font='6px "Silkscreen", monospace';X.fillStyle=a.color;X.fillText(a.name.slice(0,7),c.x-10,c.y+1);
+    if(a.status==='queued')px(c.x+6,c.y-24,2,5,'#ffb000'),px(c.x+6,c.y-18,2,2,'#ffb000');
+    if(a.status==='working'&&!REDUCED)for(let k=0;k<3;k++){const p=((t/300+k/3)%1);px(c.x-5+k*4,c.y-20-p*10,1,1,a.color)}
+    if(selected===a.id){X.strokeStyle='#ffffff';X.lineWidth=1;X.strokeRect(Math.round(c.x)-10,Math.round(c.y)-21,20,24);}});
+  BAYCREW.forEach(b=>{const c=crew[b.id];const w=bayBusy&&bayWho()===b.id;drawAgentModel(genModel(b.name,b.role),c.x,c.y,w?'working':'idle',t,false);X.font='6px "Silkscreen", monospace';X.fillStyle=b.color;X.fillText(b.name,c.x-9,c.y+1);
+    if(selected===b.id){X.strokeStyle='#ffffff';X.strokeRect(Math.round(c.x)-10,Math.round(c.y)-21,20,24);}});
+  const A=crew.aureus;if(A&&selected==='aureus'){X.strokeStyle='#ffffff';X.lineWidth=1;X.strokeRect(Math.round(A.x)-12,ROOMS.bridge.y+17,24,30);}
+  drawFx(t);
+  /* HUD */
+  X.font='7px "Silkscreen", monospace';X.fillStyle='#4fa86a';X.fillText('AUREUS COMMAND  ·  BRAINIAC IN CONTROL  ·  CYCLE '+String(S.cycle).padStart(2,'0')+'  ·  '+(busy?'CYCLE RUNNING':autoOn?'AUTOPILOT':bayBusy?'BAY ACTIVE':'STANDBY'),32,290);}
+function selectedRoom(){if(selected==='aureus')return'bridge';if(BAYCREW.some(b=>b.id===selected))return'bay';const a=S.agents.find(x=>x.id===selected);return a?roomFor(a):'';}
+function drawFx(t){fx=fx.filter(f=>{const age=t-f.t0;
+  if(f.type==='beam'){if(age>1200)return false;const c=crew[f.id];if(!c)return true;X.globalAlpha=1-age/1200;px(c.x-4,0,8,c.y,'#4af2ff');px(c.x-1,0,2,c.y,'#ffffff');X.globalAlpha=1;return true}
+  if(f.type==='zap'){if(age>700)return false;const c=crew[f.id];if(!c)return false;const sx=ROOMS.bridge.x+ROOMS.bridge.w/2,sy=ROOMS.bridge.y+24;for(let s=0;s<24;s++){if((s+(age/40|0))%3)continue;const p=s/24;px(sx+(c.x-sx)*p,sy+(c.y-12-sy)*p,2,2,'#ffb000')}return true}
+  if(f.type==='poof'){if(age>900)return false;for(let k=0;k<16;k++){const g=k/16*6.283,r=age/40;px(f.x+Math.cos(g)*r,f.y-10+Math.sin(g)*r,2,2,k%2?f.color:'#4fa86a')}return true}
+  if(f.type==='coins'){if(age>1400)return false;for(let k=0;k<f.n;k++){const vx=((k*37)%11-5)*.035,vy=-.09-((k*13)%7)*.012;px(f.x+vx*age,f.y-20+vy*age+.00012*age*age,2,2,(k+(age/100|0))%2?'#ffb000':'#ffe28a')}return true}
+  if(f.type==='rain'){if(age>2200)return false;for(let k=0;k<f.n;k++){const sx=(k*53)%SW,sp=.08+((k*7)%5)*.02;const yy=-10+(age*sp+(k*31)%60)%(SH+20);px(sx,yy,2,2,(k+(age/120|0))%2?'#ffb000':'#ffe28a')}return true}
+  return false;});}
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect();const k=Math.min(r.width/SW,r.height/SH),ox=(r.width-SW*k)/2,oy=(r.height-SH*k)/2;const x=(e.clientX-r.left-ox)/k,y=(e.clientY-r.top-oy)/k;
+  let best=null,bd=14;Object.entries(crew).forEach(([id,c])=>{const d=Math.hypot(c.x-x,c.y-10-y);if(d<bd){bd=d;best=id}});
+  if(best){select(best);return}
+  const room=Object.entries(ROOMS).find(([k,R])=>x>=R.x&&x<=R.x+R.w&&y>=R.y&&y<=R.y+R.h);
+  if(room){const k=room[0];if(k==='bridge')select('aureus');else if(k==='bay')showTab('prod');else{const a=S.agents.find(a=>roomFor(a)===k);if(a)select(a.id);}}});
+function frame(){const t=now();drawStation(t);requestAnimationFrame(frame)}
+
+/* ---------- boot ---------- */
+async function boot(){
+  try{const raw=localStorage.getItem('aureus');if(raw)adopt(raw)}catch{}
+  syncInputs();renderAll();
+  (document.fonts?.ready||Promise.resolve()).then(()=>requestAnimationFrame(frame));
+  const use=window.claude?.use;if(!use){$('#offline').hidden=false;return}
+  const [s,db]=await Promise.all([window.claude.use('sample').catch(()=>null),window.claude.use('db').catch(()=>null)]);
+  if(s){const lim=await s.limits().catch(()=>null);sample=s;if(lim&&!lim.tools)log('SYS','This view cannot run Brainiac\'s tools; the Production Bay still works by hand.');}
+  if(!sample)$('#offline').hidden=false;
+  if(db){DB=db;docRef=db.doc('hq/state');
+    try{const snap=await docRef.get();if(snap.exists&&snap.data()?.state&&adopt(snap.data().state)){syncInputs()}else save()}catch{docRef=null}
+    db.collection('products').onSnapshot(q=>{const m={};q.docs.forEach(d=>{m[d.id]=d.data()});products=m;renderProd();renderStats();},()=>{});}
+  renderAll();
+}
+boot();
+})();
+</script>
